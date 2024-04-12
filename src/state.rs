@@ -7,7 +7,7 @@ where
     Self: Sized,
 {
     /// Determines whether or not new allocations of the pinned vector will be automatically zeroed out immediately after allocation.
-    fn zero_memory() -> bool;
+    fn zero_memory(&self) -> bool;
 
     /// Creates a new state for the given `pinned_vec` which is to be wrapped by a [`PinnedConcurrentCol`].
     fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self;

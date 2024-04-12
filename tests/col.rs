@@ -39,7 +39,7 @@ fn into_inner() {
 fn zeroes_memory_on_allocation() {
     let vec: SplitVec<String> = SplitVec::new();
     let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
-    assert_eq!(col.zeroes_memory_on_allocation(), MyConState::zero_memory());
+    assert_eq!(col.zeroes_memory_on_allocation(), col.state().zero_memory());
 }
 
 #[test]

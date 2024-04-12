@@ -105,7 +105,7 @@ where
     /// Note that this is determined by [`ConcurrentState::zero_memory`] method of the underlying state.
     #[inline]
     pub fn zeroes_memory_on_allocation(&self) -> bool {
-        S::zero_memory()
+        self.state.zero_memory()
     }
 
     // unsafe getters
@@ -377,7 +377,7 @@ mod tests {
     }
 
     impl ConcurrentState for MyConState {
-        fn zero_memory() -> bool {
+        fn zero_memory(&self) -> bool {
             false
         }
 

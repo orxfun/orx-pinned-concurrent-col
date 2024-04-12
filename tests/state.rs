@@ -19,7 +19,7 @@ impl MyConState {
 }
 
 impl ConcurrentState for MyConState {
-    fn zero_memory() -> bool {
+    fn zero_memory(&self) -> bool {
         false
     }
 
