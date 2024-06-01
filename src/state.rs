@@ -10,7 +10,9 @@ where
     fn zero_memory(&self) -> bool;
 
     /// Creates a new state for the given `pinned_vec` which is to be wrapped by a [`PinnedConcurrentCol`].
-    fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self;
+    fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self
+    where
+        T: Default;
 
     /// Evaluates and returns the `WritePermit` for a request to write to the `idx`-th position of the given `col`.
     ///
@@ -20,6 +22,7 @@ where
     /// This will be paired up with the `release_growth_handle` method, which will be called immediately after the allocation is completed.
     fn write_permit<T, P, S>(&self, col: &PinnedConcurrentCol<T, P, S>, idx: usize) -> WritePermit
     where
+        T: Default,
         P: PinnedVec<T>,
         S: ConcurrentState;
 
@@ -31,6 +34,7 @@ where
         num_items: usize,
     ) -> WritePermit
     where
+        T: Default,
         P: PinnedVec<T>,
         S: ConcurrentState,
     {
@@ -53,6 +57,7 @@ where
         pinned_vec: &P,
     ) -> String
     where
+        T: Default,
         P: PinnedVec<T>,
     {
         "PinnedVec".to_string()

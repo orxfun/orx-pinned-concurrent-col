@@ -4,6 +4,7 @@ use orx_split_vec::{Doubling, Linear, Recursive, SplitVec};
 
 impl<T, S> PinnedConcurrentCol<T, SplitVec<T, Doubling>, S>
 where
+    T: Default,
     S: ConcurrentState,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Doubling>` as the underlying storage.
@@ -14,6 +15,7 @@ where
 
 impl<T, S> PinnedConcurrentCol<T, SplitVec<T, Recursive>, S>
 where
+    T: Default,
     S: ConcurrentState,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Recursive>` as the underlying storage.
@@ -24,6 +26,7 @@ where
 
 impl<T, S> PinnedConcurrentCol<T, SplitVec<T, Linear>, S>
 where
+    T: Default,
     S: ConcurrentState,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Linear>` as the underlying storage.
@@ -49,6 +52,7 @@ where
 
 impl<T, S> PinnedConcurrentCol<T, FixedVec<T>, S>
 where
+    T: Default,
     S: ConcurrentState,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `FixedVec<T>` as the underlying storage.
@@ -68,6 +72,7 @@ where
 // from
 impl<T, P, S> From<P> for PinnedConcurrentCol<T, P, S>
 where
+    T: Default,
     P: PinnedVec<T>,
     S: ConcurrentState,
 {
