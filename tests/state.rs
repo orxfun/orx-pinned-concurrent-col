@@ -29,6 +29,7 @@ impl ConcurrentState for MyConState {
 
     fn write_permit<T, P, S>(&self, col: &PinnedConcurrentCol<T, P, S>, idx: usize) -> WritePermit
     where
+        T: Default,
         P: PinnedVec<T>,
         S: ConcurrentState,
     {
@@ -46,6 +47,7 @@ impl ConcurrentState for MyConState {
         num_items: usize,
     ) -> WritePermit
     where
+        T: Default,
         P: PinnedVec<T>,
         S: ConcurrentState,
     {
