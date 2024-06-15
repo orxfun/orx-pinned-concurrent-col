@@ -4,7 +4,6 @@ use std::fmt::Debug;
 
 impl<T, P, S> Debug for PinnedConcurrentCol<T, P, S>
 where
-    T: Default,
     P: PinnedVec<T>,
     S: ConcurrentState + Debug,
 {

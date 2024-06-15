@@ -1,8 +1,9 @@
 use crate::{
-    capacity::CapacityState, errors::*, state::ConcurrentState, write_permit::WritePermit,
+    capacity::CapacityState, errors::*, mem_state::VecDropState, state::ConcurrentState,
+    write_permit::WritePermit,
 };
 use orx_pinned_vec::PinnedVec;
-use std::{cell::UnsafeCell, marker::PhantomData};
+use std::{cell::UnsafeCell, marker::PhantomData, mem::ManuallyDrop};
 
 /// A core data structure with a focus to enable high performance, possibly lock-free, concurrent collections using a [`PinnedVec`](https://crates.io/crates/orx-pinned-vec) as the underlying storage.
 ///
@@ -20,19 +21,38 @@ use std::{cell::UnsafeCell, marker::PhantomData};
 /// As clear from the properties, pinned concurrent collection aims to achieve high performance. It exposes the useful methods that can be used differently for different requirements and marks the methods which can lead to race conditions as `unsafe` by stating the underlying reasons. This enables building safe wrappers such as [`ConcurrentBag`](https://crates.io/crates/orx-concurrent-bag), [`ConcurrentOrderedBag`](https://crates.io/crates/orx-concurrent-ordered-bag) or [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
 pub struct PinnedConcurrentCol<T, P, S>
 where
-    T: Default,
     P: PinnedVec<T>,
     S: ConcurrentState,
 {
     phantom: PhantomData<T>,
-    pinned_vec: UnsafeCell<P>,
+    pinned_vec: UnsafeCell<ManuallyDrop<P>>,
     state: S,
     capacity: CapacityState,
+    vec_drop_state: VecDropState,
+}
+
+impl<T, P, S> Drop for PinnedConcurrentCol<T, P, S>
+where
+    P: PinnedVec<T>,
+    S: ConcurrentState,
+{
+    fn drop(&mut self) {
+        if let VecDropState::ToBeDropped = self.vec_drop_state {
+            self.vec_drop_state = VecDropState::TakenOut;
+            let man_drop_vec = unsafe { &mut *self.pinned_vec.get() };
+            let drop_len = self
+                .state
+                .try_get_no_gap_len()
+                .unwrap_or(0)
+                .min(man_drop_vec.capacity());
+            unsafe { self.set_pinned_vec_len(drop_len) };
+            let _vec_to_be_dropped = unsafe { ManuallyDrop::take(man_drop_vec) };
+        }
+    }
 }
 
 impl<T, P, S> PinnedConcurrentCol<T, P, S>
 where
-    T: Default,
     P: PinnedVec<T>,
     S: ConcurrentState,
 {
@@ -43,16 +63,15 @@ where
         let capacity_state = CapacityState::new_for_pinned_vec(&pinned_vec);
 
         let mut pinned = pinned_vec;
-        let (len, capacity) = (pinned.len(), pinned.capacity());
-        for _ in len..capacity {
-            pinned.push(Default::default());
-        }
+        let capacity = pinned.capacity();
+        unsafe { pinned.set_len(capacity) };
 
         Self {
             phantom: Default::default(),
             state,
             capacity: capacity_state,
-            pinned_vec: pinned.into(),
+            pinned_vec: ManuallyDrop::new(pinned).into(),
+            vec_drop_state: VecDropState::ToBeDropped,
         }
     }
 
@@ -82,9 +101,11 @@ where
     /// - Concurrent bag and vector do not allow leaving gaps, and only push to the back of the collection.
     /// - Furthermore, they keep track of the number of pushes.
     /// - Therefore, they can safely extract the pinned vector out with the length that it correctly knows.
-    pub unsafe fn into_inner(self, pinned_vec_len: usize) -> P {
+    pub unsafe fn into_inner(mut self, pinned_vec_len: usize) -> P {
         unsafe { self.set_pinned_vec_len(pinned_vec_len) };
-        self.pinned_vec.into_inner()
+        let man_drop_vec = unsafe { &mut *self.pinned_vec.get() };
+        self.vec_drop_state = VecDropState::TakenOut;
+        unsafe { ManuallyDrop::take(man_drop_vec) }
     }
 
     // getters
@@ -223,7 +244,7 @@ where
                     break;
                 }
                 WritePermit::GrowThenWrite => {
-                    self.grow_and_initialize(idx + 1);
+                    self.grow_to(idx + 1);
                     self.write_at(idx, value);
                     self.state.update_after_write(idx, idx + 1);
                     break;
@@ -272,7 +293,7 @@ where
                         break;
                     }
                     WritePermit::GrowThenWrite => {
-                        self.grow_and_initialize(end_idx);
+                        self.grow_to(end_idx);
                         self.write_n_items_at(begin_idx, num_items, values);
                         self.state.update_after_write(begin_idx, end_idx);
                         break;
@@ -288,8 +309,9 @@ where
         let pinned = unsafe { &mut *self.pinned_vec.get() };
         pinned.clear();
 
-        self.capacity = CapacityState::new_for_pinned_vec(pinned);
-        self.state = S::new_for_pinned_vec(pinned);
+        let ref_pinned: &P = &pinned;
+        self.capacity = CapacityState::new_for_pinned_vec(ref_pinned);
+        self.state = S::new_for_pinned_vec(ref_pinned);
     }
 }
 
@@ -297,7 +319,6 @@ where
 
 impl<T, P, S> PinnedConcurrentCol<T, P, S>
 where
-    T: Default,
     P: PinnedVec<T>,
     S: ConcurrentState,
 {
@@ -321,25 +342,28 @@ where
     where
         I: IntoIterator<Item = T>,
     {
+        const ERR_SHORT_ITER: &str = "iterator is shorter than expected num_items";
+
         let mut values = values.into_iter();
         let end_idx = begin_idx + num_items;
         let pinned = unsafe { &mut *self.pinned_vec.get() };
         let slices = pinned.slices_mut(begin_idx..end_idx);
+
         for slice in slices {
-            for x in slice.iter_mut() {
-                *x = values
-                    .next()
-                    .expect("iterator is shorter than promised num_items");
+            let ptr = slice.as_mut_ptr();
+            let len = slice.len();
+            for i in 0..len {
+                unsafe { ptr.add(i).write(values.next().expect(ERR_SHORT_ITER)) };
             }
         }
     }
 
-    fn grow_and_initialize(&self, new_capacity: usize) {
+    fn grow_to(&self, new_capacity: usize) {
         let pinned = unsafe { &mut *self.pinned_vec.get() };
 
-        let new_capacity = pinned
-            .grow_and_initialize(new_capacity, Default::default)
-            .expect(ERR_FAILED_TO_GROW);
+        let new_capacity =
+            unsafe { pinned.grow_to(new_capacity, false) }.expect(ERR_FAILED_TO_GROW);
+        unsafe { pinned.set_len(new_capacity) };
 
         self.capacity.set_capacity(new_capacity);
         self.state.release_growth_handle();
@@ -410,7 +434,6 @@ mod tests {
             idx: usize,
         ) -> WritePermit
         where
-            T: Default,
             P: PinnedVec<T>,
             S: ConcurrentState,
         {
@@ -428,7 +451,6 @@ mod tests {
             num_items: usize,
         ) -> WritePermit
         where
-            T: Default,
             P: PinnedVec<T>,
             S: ConcurrentState,
         {
@@ -445,6 +467,10 @@ mod tests {
         fn release_growth_handle(&self) {}
 
         fn update_after_write(&self, _: usize, _: usize) {}
+
+        fn try_get_no_gap_len(&self) -> Option<usize> {
+            None
+        }
     }
 
     #[test]

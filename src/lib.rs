@@ -38,6 +38,7 @@ mod capacity;
 mod col;
 mod common_traits;
 mod errors;
+mod mem_state;
 mod new;
 mod state;
 mod write_permit;
