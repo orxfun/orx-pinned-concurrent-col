@@ -29,7 +29,6 @@ impl ConcurrentState for MyConState {
 
     fn write_permit<T, P, S>(&self, col: &PinnedConcurrentCol<T, P, S>, idx: usize) -> WritePermit
     where
-        T: Default,
         P: PinnedVec<T>,
         S: ConcurrentState,
     {
@@ -47,7 +46,6 @@ impl ConcurrentState for MyConState {
         num_items: usize,
     ) -> WritePermit
     where
-        T: Default,
         P: PinnedVec<T>,
         S: ConcurrentState,
     {
@@ -64,6 +62,10 @@ impl ConcurrentState for MyConState {
     fn release_growth_handle(&self) {}
 
     fn update_after_write(&self, _: usize, _: usize) {}
+
+    fn try_get_no_gap_len(&self) -> Option<usize> {
+        None
+    }
 }
 
 #[test]
