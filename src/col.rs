@@ -304,12 +304,62 @@ where
         }
     }
 
+    /// Reserves and returns an iterator of mutable slices for `num_items` positions starting from the `begin_idx`-th position.
+    ///
+    /// The caller is responsible for filling all `num_items` positions in the returned iterator of slices with values to avoid gaps.
+    ///
+    /// # Safety
+    ///
+    /// This method makes sure that the values are written to positions owned by the underlying pinned vector.
+    /// Furthermore, it makes sure that the growth of the vector happens thread-safely whenever necessary.
+    ///
+    /// On the other hand, it is unsafe due to the possibility of a race condition.
+    /// Multiple threads can try to write to the same position at the same time.
+    /// The wrapper is responsible for preventing this.
+    ///
+    /// Furthermore, the caller is responsible to write all positions of the acquired slices to make sure that the collection is gap free.
+    ///
+    /// Note that although both methods are unsafe, it is much easier to achieve required safety guarantees with `write_n_items`;
+    /// hence, it must be preferred unless there is a good reason to acquire mutable slices.
+    /// One such example case is to copy results directly into the output's slices, which could be more performant in a very critical scenario.
+    pub unsafe fn n_items_buffer_as_mut_slices<'a>(
+        &self,
+        begin_idx: usize,
+        num_items: usize,
+    ) -> P::SliceMutIter<'a> {
+        match num_items {
+            0 => P::SliceMutIter::default(),
+            _ => {
+                let end_idx = begin_idx + num_items;
+                let last_idx = end_idx - 1;
+                self.assert_has_capacity_for(last_idx);
+
+                loop {
+                    match self.state.write_permit_n_items(self, begin_idx, num_items) {
+                        WritePermit::JustWrite => {
+                            let slices = self.slices_for_n_items_at(begin_idx, num_items);
+                            self.state.update_after_write(begin_idx, end_idx);
+                            return slices;
+                        }
+                        WritePermit::GrowThenWrite => {
+                            self.grow_to(end_idx);
+                            let slices = self.slices_for_n_items_at(begin_idx, num_items);
+                            self.state.update_after_write(begin_idx, end_idx);
+                            return slices;
+                        }
+                        WritePermit::Spin => {}
+                    }
+                }
+            }
+        }
+    }
+
     /// Clears the collection.
     pub fn clear(&mut self) {
         let pinned = unsafe { &mut *self.pinned_vec.get() };
         pinned.clear();
 
-        let ref_pinned: &P = &pinned;
+        let ref_pinned: &P = pinned;
         self.capacity = CapacityState::new_for_pinned_vec(ref_pinned);
         self.state = S::new_for_pinned_vec(ref_pinned);
     }
@@ -345,9 +395,7 @@ where
         const ERR_SHORT_ITER: &str = "iterator is shorter than expected num_items";
 
         let mut values = values.into_iter();
-        let end_idx = begin_idx + num_items;
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        let slices = pinned.slices_mut(begin_idx..end_idx);
+        let slices = self.slices_for_n_items_at(begin_idx, num_items);
 
         for slice in slices {
             let ptr = slice.as_mut_ptr();
@@ -356,6 +404,13 @@ where
                 unsafe { ptr.add(i).write(values.next().expect(ERR_SHORT_ITER)) };
             }
         }
+    }
+
+    #[inline]
+    fn slices_for_n_items_at<'a>(&self, begin_idx: usize, num_items: usize) -> P::SliceMutIter<'a> {
+        let end_idx = begin_idx + num_items;
+        let pinned = unsafe { &mut *self.pinned_vec.get() };
+        pinned.slices_mut(begin_idx..end_idx)
     }
 
     fn grow_to(&self, new_capacity: usize) {
