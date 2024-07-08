@@ -83,6 +83,20 @@ fn get() {
     }
 }
 
+#[test]
+fn get_mut() {
+    let mut vec: SplitVec<String> = SplitVec::new();
+    for i in 0..187 {
+        vec.push(i.to_string());
+    }
+
+    let mut col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+
+    let element42 = unsafe { col.get_mut(42) }.expect("is-some");
+    *element42 = "x".to_string();
+    assert_eq!(unsafe { col.get(42) }, Some(&String::from("x")));
+}
+
 #[test_matrix([
     SplitVec::with_doubling_growth(),
     SplitVec::with_doubling_growth_and_fragments_capacity(16),
