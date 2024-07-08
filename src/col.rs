@@ -135,6 +135,7 @@ where
     }
 
     // unsafe getters
+
     /// Returns an iterator to the elements of the underlying pinned vector starting from the first element and taking `len` elements.
     ///
     /// # Safety
@@ -160,11 +161,35 @@ where
     pub unsafe fn iter(&self, len: usize) -> impl Iterator<Item = &T> {
         let pinned = unsafe { &mut *self.pinned_vec.get() };
         unsafe { pinned.set_len(len) };
-        let iter = pinned.iter().take(len);
-        iter
+        pinned.iter().take(len)
     }
 
-    /// Returns the element written at the `index`-th position.
+    /// Returns a mutable iterator to the elements of the underlying pinned vector starting from the first element and taking `len` elements.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe due to the following reasons:
+    ///
+    /// * `PinnedConcurrentCol` does not guarantee that all positions are initialized.
+    /// It is possible to create the collection, skip the first position and directly write to the second position.
+    /// In this case, the `iter` call would read an uninitialized value at the first position.
+    ///
+    /// ## Example Safe Usage
+    ///
+    /// This method can be wrapped by a safe method provided that the following safety requirement can be guaranteed:
+    ///* All values in range `0..pinned_vec_len` of the concurrent collection are written.
+    ///
+    /// An example can be seen in [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
+    /// - Concurrent vec zeroes memory on allocation.
+    /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
+    /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
+    pub unsafe fn iter_mut(&mut self, len: usize) -> impl Iterator<Item = &mut T> {
+        let pinned = unsafe { &mut *self.pinned_vec.get() };
+        unsafe { pinned.set_len(len) };
+        pinned.iter_mut().take(len)
+    }
+
+    /// Returns a reference to the element written at the `index`-th position.
     ///
     /// # Safety
     ///
@@ -196,7 +221,37 @@ where
         }
     }
 
+    /// Returns a mutable reference to the element written at the `index`-th position.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe due to the following reason.
+    ///
+    /// * `PinnedConcurrentCol` does not guarantee that all positions are initialized.
+    /// It is possible to create the collection, skip the first position and directly write to the second position.
+    /// In this case, the `get` call would read an uninitialized value at the first position.
+    ///
+    /// ## Example Safe Usage
+    ///
+    /// This method can be wrapped by a safe method provided that the following safety requirement can be guaranteed:
+    /// * The value at position `index` is written.
+    ///
+    /// An example can be seen in [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
+    /// - Concurrent vec zeroes memory on allocation.
+    /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
+    /// - The get_mut method wrapper will return `None` for uninitialized values.
+    pub unsafe fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        if index < self.capacity() {
+            let pinned = unsafe { &mut *self.pinned_vec.get() };
+            let ptr = unsafe { pinned.get_ptr_mut(index) };
+            ptr.and_then(|x| x.as_mut())
+        } else {
+            None
+        }
+    }
+
     // mutations
+
     /// Note that [`PinnedConcurrentCol::maximum_capacity`] returns the maximum possible number of elements that the underlying pinned vector can grow to without reserving maximum capacity.
     ///
     /// In other words, the pinned vector can automatically grow up to the [`PinnedConcurrentCol::maximum_capacity`] with `write` and `write_n_items` methods, using only a shared reference.
@@ -395,8 +450,8 @@ where
         const ERR_SHORT_ITER: &str = "iterator is shorter than expected num_items";
 
         let mut values = values.into_iter();
-        let slices = self.slices_for_n_items_at(begin_idx, num_items);
 
+        let slices = self.slices_for_n_items_at(begin_idx, num_items);
         for slice in slices {
             let ptr = slice.as_mut_ptr();
             let len = slice.len();
