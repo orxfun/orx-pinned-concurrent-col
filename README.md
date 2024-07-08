@@ -18,6 +18,10 @@ Pinned vectors grow while keeping the already pushed elements pinned to their me
 
 As clear from the properties, pinned concurrent collection aims to achieve high performance. It exposes the useful methods that can be used differently for different requirements and marks the methods which can lead to race conditions as `unsafe` by stating the underlying reasons. This enables building safe wrappers such as [`ConcurrentBag`](https://crates.io/crates/orx-concurrent-bag), [`ConcurrentOrderedBag`](https://crates.io/crates/orx-concurrent-ordered-bag) or [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
 
+## Contributing
+
+Contributions are welcome! If you notice an error, have a question or think something could be improved, please open an [issue](https://github.com/orxfun/orx-pinned-concurrent-col/issues/new) or create a PR.
+
 ## License
 
 This library is licensed under MIT license. See LICENSE for details.
