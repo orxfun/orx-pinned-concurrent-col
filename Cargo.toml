@@ -1,6 +1,6 @@
 [package]
 name = "orx-pinned-concurrent-col"
-version = "1.6.0"
+version = "1.6.1"
 edition = "2021"
 authors = ["orxfun <orx.ugur.arikan@gmail.com>"]
 description = "A core data structure with a focus to enable high performance, possibly lock-free, concurrent collections using a PinnedVec as the underlying storage."
