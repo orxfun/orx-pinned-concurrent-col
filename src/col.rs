@@ -1,9 +1,9 @@
 use crate::{
-    capacity::CapacityState, errors::*, mem_state::VecDropState, state::ConcurrentState,
-    write_permit::WritePermit,
+    errors::*, mem_state::VecDropState, state::ConcurrentState, write_permit::WritePermit,
 };
-use orx_pinned_vec::PinnedVec;
-use std::{cell::UnsafeCell, marker::PhantomData, mem::ManuallyDrop};
+use orx_pinned_vec::{ConcurrentPinnedVec, IntoConcurrentPinnedVec, PinnedVec};
+use orx_pseudo_default::PseudoDefault;
+use std::marker::PhantomData;
 
 /// A core data structure with a focus to enable high performance, possibly lock-free, concurrent collections using a [`PinnedVec`](https://crates.io/crates/orx-pinned-vec) as the underlying storage.
 ///
@@ -21,61 +21,56 @@ use std::{cell::UnsafeCell, marker::PhantomData, mem::ManuallyDrop};
 /// As clear from the properties, pinned concurrent collection aims to achieve high performance. It exposes the useful methods that can be used differently for different requirements and marks the methods which can lead to race conditions as `unsafe` by stating the underlying reasons. This enables building safe wrappers such as [`ConcurrentBag`](https://crates.io/crates/orx-concurrent-bag), [`ConcurrentOrderedBag`](https://crates.io/crates/orx-concurrent-ordered-bag) or [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
 pub struct PinnedConcurrentCol<T, P, S>
 where
-    P: PinnedVec<T>,
+    P: ConcurrentPinnedVec<T>,
     S: ConcurrentState,
 {
     phantom: PhantomData<T>,
-    pinned_vec: UnsafeCell<ManuallyDrop<P>>,
+    con_pinned_vec: P,
     state: S,
-    capacity: CapacityState,
     vec_drop_state: VecDropState,
 }
 
 impl<T, P, S> Drop for PinnedConcurrentCol<T, P, S>
 where
-    P: PinnedVec<T>,
+    P: ConcurrentPinnedVec<T>,
     S: ConcurrentState,
 {
     fn drop(&mut self) {
         if let VecDropState::ToBeDropped = self.vec_drop_state {
             self.vec_drop_state = VecDropState::TakenOut;
-            let man_drop_vec = unsafe { &mut *self.pinned_vec.get() };
-            let drop_len = self
-                .state
-                .try_get_no_gap_len()
-                .unwrap_or(0)
-                .min(man_drop_vec.capacity());
-            unsafe { self.set_pinned_vec_len(drop_len) };
-            let _vec_to_be_dropped = unsafe { ManuallyDrop::take(man_drop_vec) };
+            let capacity = self.con_pinned_vec.capacity();
+            let no_gap_len = self.state.try_get_no_gap_len().unwrap_or(capacity);
+            let len = [no_gap_len].into_iter().fold(capacity, usize::min);
+
+            unsafe { self.con_pinned_vec.set_pinned_vec_len(len) };
         }
     }
 }
 
 impl<T, P, S> PinnedConcurrentCol<T, P, S>
 where
-    P: PinnedVec<T>,
+    P: ConcurrentPinnedVec<T>,
     S: ConcurrentState,
 {
     // new
     /// Wraps the `pinned_vec` and converts it into a pinned concurrent collection.
-    pub fn new_from_pinned(pinned_vec: P) -> Self {
+    pub fn new_from_pinned<Q>(pinned_vec: Q) -> Self
+    where
+        Q: IntoConcurrentPinnedVec<T, ConPinnedVec = P>,
+    {
         let state = S::new_for_pinned_vec(&pinned_vec);
-        let capacity_state = CapacityState::new_for_pinned_vec(&pinned_vec);
-
-        let mut pinned = pinned_vec;
-        let capacity = pinned.capacity();
-        unsafe { pinned.set_len(capacity) };
+        let con_pinned_vec = pinned_vec.into_concurrent();
 
         Self {
             phantom: Default::default(),
             state,
-            capacity: capacity_state,
-            pinned_vec: ManuallyDrop::new(pinned).into(),
+            con_pinned_vec,
             vec_drop_state: VecDropState::ToBeDropped,
         }
     }
 
     // into
+
     /// Sets the length of the underlying pinned vector to the given `pinned_vec_len` and returns the vector.
     ///
     /// # Safety
@@ -101,14 +96,22 @@ where
     /// - Concurrent bag and vector do not allow leaving gaps, and only push to the back of the collection.
     /// - Furthermore, they keep track of the number of pushes.
     /// - Therefore, they can safely extract the pinned vector out with the length that it correctly knows.
-    pub unsafe fn into_inner(mut self, pinned_vec_len: usize) -> P {
-        unsafe { self.set_pinned_vec_len(pinned_vec_len) };
-        let man_drop_vec = unsafe { &mut *self.pinned_vec.get() };
+    pub unsafe fn into_inner(mut self, pinned_vec_len: usize) -> P::P
+    where
+        P::P: IntoConcurrentPinnedVec<T, ConPinnedVec = P>,
+    {
         self.vec_drop_state = VecDropState::TakenOut;
-        unsafe { ManuallyDrop::take(man_drop_vec) }
+
+        self.con_pinned_vec.set_pinned_vec_len(pinned_vec_len);
+
+        let mut inner = <P::P as PseudoDefault>::pseudo_default().into_concurrent();
+        std::mem::swap(&mut inner, &mut self.con_pinned_vec);
+
+        inner.into_inner(pinned_vec_len)
     }
 
     // getters
+
     /// Returns a reference to the current concurrent state of the collection.
     #[inline]
     pub fn state(&self) -> &S {
@@ -117,21 +120,14 @@ where
 
     /// Returns the current allocated capacity of the collection.
     pub fn capacity(&self) -> usize {
-        self.capacity.current()
+        self.con_pinned_vec.capacity()
     }
 
     /// Returns maximum possible capacity that the collection can reach without calling [`PinnedConcurrentCol::reserve_maximum_capacity`].
     ///
     /// Importantly note that maximum capacity does not correspond to the allocated memory.
     pub fn maximum_capacity(&self) -> usize {
-        self.capacity.maximum()
-    }
-
-    /// Returns whether or not the collection zeroes out memory on allocation.
-    /// Note that this is determined by [`ConcurrentState::zero_memory`] method of the underlying state.
-    #[inline]
-    pub fn zeroes_memory_on_allocation(&self) -> bool {
-        self.state.zero_memory()
+        self.con_pinned_vec.max_capacity()
     }
 
     // unsafe getters
@@ -159,9 +155,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
     pub unsafe fn iter(&self, len: usize) -> impl Iterator<Item = &T> {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        unsafe { pinned.set_len(len) };
-        pinned.iter().take(len)
+        self.con_pinned_vec.iter(len)
     }
 
     /// Returns a mutable iterator to the elements of the underlying pinned vector starting from the first element and taking `len` elements.
@@ -184,9 +178,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
     pub unsafe fn iter_mut(&mut self, len: usize) -> impl Iterator<Item = &mut T> {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        unsafe { pinned.set_len(len) };
-        pinned.iter_mut().take(len)
+        self.con_pinned_vec.iter_mut(len)
     }
 
     /// Returns a reference to the element written at the `index`-th position.
@@ -212,13 +204,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The get method wrapper simply the value, which will be `None` for uninitialized values.
     pub unsafe fn get(&self, index: usize) -> Option<&T> {
-        if index < self.capacity() {
-            let pinned = unsafe { &mut *self.pinned_vec.get() };
-            let ptr = unsafe { pinned.get_ptr_mut(index) };
-            ptr.and_then(|x| x.as_ref())
-        } else {
-            None
-        }
+        self.con_pinned_vec.get(index)
     }
 
     /// Returns a mutable reference to the element written at the `index`-th position.
@@ -241,13 +227,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The get_mut method wrapper will return `None` for uninitialized values.
     pub unsafe fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        if index < self.capacity() {
-            let pinned = unsafe { &mut *self.pinned_vec.get() };
-            let ptr = unsafe { pinned.get_ptr_mut(index) };
-            ptr.and_then(|x| x.as_mut())
-        } else {
-            None
-        }
+        self.con_pinned_vec.get_mut(index)
     }
 
     // mutations
@@ -264,14 +244,18 @@ where
     /// * `SplitVec<_, Doubling>`: supports this method; however, it does not require for any practical size.
     /// * `SplitVec<_, Linear>`: is guaranteed to succeed and increase its maximum capacity to the required value.
     /// * `FixedVec<_>`: is the most strict pinned vector which cannot grow even in a single-threaded setting. Currently, it will always return an error to this call.
-    pub fn reserve_maximum_capacity(&mut self, maximum_capacity: usize) -> Result<usize, String> {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        pinned
-            .try_reserve_maximum_concurrent_capacity(maximum_capacity)
-            .map(|x| {
-                self.capacity.set_max_capacity(x);
-                x
-            })
+    ///
+    /// # Safety
+    /// This method is unsafe since the concurrent pinned vector might contain gaps. The vector must be gap-free while increasing the maximum capacity.
+    ///
+    /// This method can safely be called if entries in all positions 0..len are written.
+    pub unsafe fn reserve_maximum_capacity(
+        &mut self,
+        current_len: usize,
+        maximum_capacity: usize,
+    ) -> usize {
+        self.con_pinned_vec
+            .reserve_maximum_concurrent_capacity(current_len, maximum_capacity)
     }
 
     /// Writes the `value` to the `idx`-th position.
@@ -289,7 +273,6 @@ where
     /// * **multiple `write` or `write_n_items` calls which writes to the same `idx` must not happen concurrently.**
     pub unsafe fn write(&self, idx: usize, value: T) {
         self.assert_has_capacity_for(idx);
-
         loop {
             let write_permit = self.state.write_permit(self, idx);
             match write_permit {
@@ -377,13 +360,13 @@ where
     /// Note that although both methods are unsafe, it is much easier to achieve required safety guarantees with `write_n_items`;
     /// hence, it must be preferred unless there is a good reason to acquire mutable slices.
     /// One such example case is to copy results directly into the output's slices, which could be more performant in a very critical scenario.
-    pub unsafe fn n_items_buffer_as_mut_slices<'a>(
+    pub unsafe fn n_items_buffer_as_mut_slices(
         &self,
         begin_idx: usize,
         num_items: usize,
-    ) -> P::SliceMutIter<'a> {
+    ) -> <P::P as PinnedVec<T>>::SliceMutIter<'_> {
         match num_items {
-            0 => P::SliceMutIter::default(),
+            0 => <P::P as PinnedVec<T>>::SliceMutIter::default(),
             _ => {
                 let end_idx = begin_idx + num_items;
                 let last_idx = end_idx - 1;
@@ -410,13 +393,14 @@ where
     }
 
     /// Clears the collection.
-    pub fn clear(&mut self) {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        pinned.clear();
-
-        let ref_pinned: &P = pinned;
-        self.capacity = CapacityState::new_for_pinned_vec(ref_pinned);
-        self.state = S::new_for_pinned_vec(ref_pinned);
+    ///
+    /// # Safety
+    /// This method is unsafe since the concurrent pinned vector might contain gaps.
+    ///
+    /// This method can safely be called if entries in all positions 0..len are written
+    pub unsafe fn clear(&mut self, prior_len: usize) {
+        self.con_pinned_vec.clear(prior_len);
+        self.state = S::new_for_con_pinned_vec(&self.con_pinned_vec, 0);
     }
 }
 
@@ -424,13 +408,13 @@ where
 
 impl<T, P, S> PinnedConcurrentCol<T, P, S>
 where
-    P: PinnedVec<T>,
+    P: ConcurrentPinnedVec<T>,
     S: ConcurrentState,
 {
     #[inline]
     fn assert_has_capacity_for(&self, idx: usize) {
         assert!(
-            idx < self.capacity.maximum(),
+            idx < self.con_pinned_vec.max_capacity(),
             "{}",
             ERR_REACHED_MAX_CAPACITY
         );
@@ -438,9 +422,8 @@ where
 
     #[inline]
     fn write_at(&self, idx: usize, value: T) {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        let ptr = unsafe { pinned.get_ptr_mut(idx) }.expect(ERR_FAILED_TO_PUSH);
-        unsafe { std::ptr::write(ptr, value) };
+        let ptr = unsafe { self.con_pinned_vec.get_ptr_mut(idx) };
+        unsafe { ptr.write(value) };
     }
 
     fn write_n_items_at<I>(&self, begin_idx: usize, num_items: usize, values: I)
@@ -462,47 +445,22 @@ where
     }
 
     #[inline]
-    fn slices_for_n_items_at<'a>(&self, begin_idx: usize, num_items: usize) -> P::SliceMutIter<'a> {
+    fn slices_for_n_items_at(
+        &self,
+        begin_idx: usize,
+        num_items: usize,
+    ) -> <P::P as PinnedVec<T>>::SliceMutIter<'_> {
         let end_idx = begin_idx + num_items;
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        pinned.slices_mut(begin_idx..end_idx)
+        unsafe { self.con_pinned_vec.slices_mut(begin_idx..end_idx) }
     }
 
     fn grow_to(&self, new_capacity: usize) {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
+        let _new_capacity = self
+            .con_pinned_vec
+            .grow_to(new_capacity)
+            .expect(ERR_FAILED_TO_GROW);
 
-        let new_capacity =
-            unsafe { pinned.grow_to(new_capacity, false) }.expect(ERR_FAILED_TO_GROW);
-        unsafe { pinned.set_len(new_capacity) };
-
-        self.capacity.set_capacity(new_capacity);
         self.state.release_growth_handle();
-    }
-
-    /// Sets the length of the underlying pinned vector to the given `pinned_vec_len`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `pinned_vec_len > self.capacity()`.
-    ///
-    /// # Safety
-    ///
-    /// `PinnedConcurrentCol` allows and does not track gaps in the underlying vector.
-    /// Therefore, setting its length to a value including uninitialized values might lead to safety issues.
-    /// * It is partially okay since the collection does not expose the pinned vector. In other words, one cannot access the uninitialized memory, even if it exists.
-    /// * However, if the underlying element type does not have valid uninitialized value, this might still lead to a memory corruption.
-    unsafe fn set_pinned_vec_len(&self, pinned_vec_len: usize) {
-        let pinned = unsafe { &mut *self.pinned_vec.get() };
-        assert!(pinned_vec_len <= pinned.capacity());
-        unsafe { pinned.set_len(pinned_vec_len) };
-    }
-
-    pub(crate) fn pinned_vec(&self) -> &P {
-        unsafe { &*self.pinned_vec.get() }
-    }
-
-    pub(crate) fn capacity_state(&self) -> &CapacityState {
-        &self.capacity
     }
 }
 
@@ -510,14 +468,17 @@ where
 mod tests {
     use super::*;
     use orx_pinned_vec::PinnedVec;
-    use orx_split_vec::SplitVec;
-    use std::cmp::Ordering;
-    use test_case::test_matrix;
+    use std::{
+        cmp::Ordering,
+        sync::atomic::{self, AtomicUsize},
+    };
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug)]
+    #[allow(dead_code)]
     pub struct MyConState {
         pub initial_len: usize,
         pub initial_cap: usize,
+        pub len: AtomicUsize,
     }
 
     impl MyConState {
@@ -525,7 +486,13 @@ mod tests {
             Self {
                 initial_len,
                 initial_cap,
+                len: initial_len.into(),
             }
+        }
+
+        #[inline(always)]
+        pub(crate) fn len(&self) -> usize {
+            self.len.load(atomic::Ordering::SeqCst)
         }
     }
 
@@ -538,16 +505,25 @@ mod tests {
             Self::new(pinned_vec.len(), pinned_vec.capacity())
         }
 
+        fn new_for_con_pinned_vec<T, P: ConcurrentPinnedVec<T>>(
+            con_pinned_vec: &P,
+            len: usize,
+        ) -> Self {
+            Self::new(len, con_pinned_vec.capacity())
+        }
+
         fn write_permit<T, P, S>(
             &self,
             col: &PinnedConcurrentCol<T, P, S>,
             idx: usize,
         ) -> WritePermit
         where
-            P: PinnedVec<T>,
+            P: ConcurrentPinnedVec<T>,
             S: ConcurrentState,
         {
-            match idx.cmp(&col.capacity()) {
+            let capacity = col.capacity();
+
+            match idx.cmp(&capacity) {
                 Ordering::Less => WritePermit::JustWrite,
                 Ordering::Equal => WritePermit::GrowThenWrite,
                 Ordering::Greater => WritePermit::Spin,
@@ -561,15 +537,15 @@ mod tests {
             num_items: usize,
         ) -> WritePermit
         where
-            P: PinnedVec<T>,
+            P: ConcurrentPinnedVec<T>,
             S: ConcurrentState,
         {
             let capacity = col.capacity();
             let last_idx = begin_idx + num_items - 1;
 
             match (begin_idx.cmp(&capacity), last_idx.cmp(&capacity)) {
-                (_, Ordering::Less) => WritePermit::JustWrite,
-                (Ordering::Greater, _) => WritePermit::Spin,
+                (_, std::cmp::Ordering::Less) => WritePermit::JustWrite,
+                (std::cmp::Ordering::Greater, _) => WritePermit::Spin,
                 _ => WritePermit::GrowThenWrite,
             }
         }
@@ -579,58 +555,7 @@ mod tests {
         fn update_after_write(&self, _: usize, _: usize) {}
 
         fn try_get_no_gap_len(&self) -> Option<usize> {
-            None
+            Some(self.len())
         }
-    }
-
-    #[test]
-    fn set_pinned_vec_len_in_len() {
-        for _ in 0..140 {
-            let mut vec: SplitVec<String> =
-                SplitVec::with_doubling_growth_and_fragments_capacity(32);
-            vec.push("a".to_string());
-            vec.push("b".to_string());
-            vec.push("c".to_string());
-            vec.push("d".to_string());
-            vec.push("e".to_string());
-            vec.push("f".to_string());
-
-            let col: PinnedConcurrentCol<_, _, MyConState> =
-                PinnedConcurrentCol::new_from_pinned(vec);
-
-            for ok_len in 0..6 {
-                unsafe { col.set_pinned_vec_len(ok_len) };
-            }
-        }
-    }
-
-    #[test_matrix([7, 8, 9, 10, 11, 12])]
-    fn set_pinned_vec_len_in_capacity_with_stack(within_capacity_len: usize) {
-        for _ in 0..140 {
-            let mut vec: SplitVec<&'static str> =
-                SplitVec::with_doubling_growth_and_fragments_capacity(32);
-            vec.push("a");
-            vec.push("b");
-            vec.push("c");
-            vec.push("d");
-            vec.push("e");
-            vec.push("f");
-
-            let col: PinnedConcurrentCol<_, _, MyConState> =
-                PinnedConcurrentCol::new_from_pinned(vec);
-            unsafe { col.set_pinned_vec_len(within_capacity_len) };
-        }
-    }
-
-    #[test_matrix([13, 14, 15, 16, 17, 18])]
-    #[should_panic]
-    fn set_pinned_vec_len_out_of_capacity(out_of_capacity_len: usize) {
-        let mut vec: SplitVec<usize> = SplitVec::with_doubling_growth_and_fragments_capacity(32);
-        for i in 0..6 {
-            vec.push(i);
-        }
-
-        let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
-        unsafe { col.set_pinned_vec_len(out_of_capacity_len) };
     }
 }

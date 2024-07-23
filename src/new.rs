@@ -1,8 +1,8 @@
 use crate::{col::PinnedConcurrentCol, state::ConcurrentState};
-use orx_fixed_vec::{FixedVec, PinnedVec};
-use orx_split_vec::{Doubling, Linear, Recursive, SplitVec};
+use orx_fixed_vec::{ConcurrentFixedVec, FixedVec};
+use orx_split_vec::{ConcurrentSplitVec, Doubling, Linear, SplitVec};
 
-impl<T, S> PinnedConcurrentCol<T, SplitVec<T, Doubling>, S>
+impl<T, S> PinnedConcurrentCol<T, ConcurrentSplitVec<T, Doubling>, S>
 where
     S: ConcurrentState,
 {
@@ -12,17 +12,7 @@ where
     }
 }
 
-impl<T, S> PinnedConcurrentCol<T, SplitVec<T, Recursive>, S>
-where
-    S: ConcurrentState,
-{
-    /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Recursive>` as the underlying storage.
-    pub fn with_recursive_growth() -> Self {
-        Self::new_from_pinned(SplitVec::with_recursive_growth_and_fragments_capacity(32))
-    }
-}
-
-impl<T, S> PinnedConcurrentCol<T, SplitVec<T, Linear>, S>
+impl<T, S> PinnedConcurrentCol<T, ConcurrentSplitVec<T, Linear>, S>
 where
     S: ConcurrentState,
 {
@@ -47,7 +37,7 @@ where
     }
 }
 
-impl<T, S> PinnedConcurrentCol<T, FixedVec<T>, S>
+impl<T, S> PinnedConcurrentCol<T, ConcurrentFixedVec<T>, S>
 where
     S: ConcurrentState,
 {
@@ -62,17 +52,5 @@ where
     /// This maximum capacity can be accessed by [`PinnedConcurrentCol::maximum_capacity`] method.
     pub fn with_fixed_capacity(fixed_capacity: usize) -> Self {
         Self::new_from_pinned(FixedVec::new(fixed_capacity))
-    }
-}
-
-// from
-impl<T, P, S> From<P> for PinnedConcurrentCol<T, P, S>
-where
-    P: PinnedVec<T>,
-    S: ConcurrentState,
-{
-    /// Wraps the pinned vector and converts it into a pinned concurrent collection.
-    fn from(pinned_vec: P) -> Self {
-        Self::new_from_pinned(pinned_vec)
     }
 }
