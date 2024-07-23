@@ -4,6 +4,7 @@ use orx_fixed_vec::FixedVec;
 use orx_pinned_concurrent_col::*;
 use orx_pinned_vec::PinnedVec;
 use orx_split_vec::SplitVec;
+use prelude::IntoConcurrentPinnedVec;
 use state::MyConState;
 use test_case::test_matrix;
 
@@ -15,7 +16,8 @@ fn new_from_pinned() {
     let col: PinnedConcurrentCol<_, _, MyConState> =
         PinnedConcurrentCol::new_from_pinned(pinned_vec.clone());
 
-    assert_eq!(col.state(), &expected_state);
+    assert_eq!(col.state().initial_len, expected_state.initial_len);
+    assert_eq!(col.state().initial_cap, expected_state.initial_cap);
     assert_eq!(col.capacity(), pinned_vec.capacity());
     assert_eq!(
         col.maximum_capacity(),
@@ -35,38 +37,40 @@ fn into_inner() {
     assert_eq!(&vec_back, &["a".to_string(), "b".to_string()]);
 }
 
-#[test]
-fn zeroes_memory_on_allocation() {
-    let vec: SplitVec<String> = SplitVec::new();
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
-    assert_eq!(col.zeroes_memory_on_allocation(), col.state().zero_memory());
-}
-
-#[test]
-fn iter() {
-    let mut vec: SplitVec<usize> = SplitVec::new();
+#[test_matrix([
+    FixedVec::new(222),
+    SplitVec::with_doubling_growth_and_fragments_capacity(16),
+    SplitVec::with_linear_growth_and_fragments_capacity(10, 33)
+])]
+fn iter<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     for i in 0..187 {
-        vec.push(i);
+        vec.push(i.to_string());
     }
 
     let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
 
+    let iter = unsafe { col.iter(0) };
+    assert_eq!(iter.count(), 0);
+
     let mut iter = unsafe { col.iter(4) };
     for i in 0..4 {
-        assert_eq!(iter.next(), Some(&i));
+        assert_eq!(iter.next(), Some(&i.to_string()));
     }
     assert_eq!(iter.next(), None);
 
     let mut iter = unsafe { col.iter(187) };
     for i in 0..187 {
-        assert_eq!(iter.next(), Some(&i));
+        assert_eq!(iter.next(), Some(&i.to_string()));
     }
     assert_eq!(iter.next(), None);
 }
 
-#[test]
-fn get() {
-    let mut vec: SplitVec<String> = SplitVec::new();
+#[test_matrix([
+    FixedVec::new(222),
+    SplitVec::with_doubling_growth_and_fragments_capacity(16),
+    SplitVec::with_linear_growth_and_fragments_capacity(10, 33)
+])]
+fn get<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     for i in 0..187 {
         vec.push(i.to_string());
     }
@@ -83,9 +87,12 @@ fn get() {
     }
 }
 
-#[test]
-fn get_mut() {
-    let mut vec: SplitVec<String> = SplitVec::new();
+#[test_matrix([
+    FixedVec::new(222),
+    SplitVec::with_doubling_growth_and_fragments_capacity(16),
+    SplitVec::with_linear_growth_and_fragments_capacity(10, 33)
+])]
+fn get_mut<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     for i in 0..187 {
         vec.push(i.to_string());
     }
@@ -100,62 +107,30 @@ fn get_mut() {
 #[test_matrix([
     SplitVec::with_doubling_growth(),
     SplitVec::with_doubling_growth_and_fragments_capacity(16),
-    SplitVec::with_recursive_growth(),
-    SplitVec::with_recursive_growth_and_fragments_capacity(31),
     SplitVec::with_linear_growth(4),
-    SplitVec::with_linear_growth_and_fragments_capacity(4, 33)
-])]
-fn can_reserve_maximum_capacity<P: PinnedVec<String>>(pinned_vec: P) {
-    let mut col: PinnedConcurrentCol<_, _, MyConState> = pinned_vec.into();
-
-    let max_cap = col.maximum_capacity();
-    let requested_max_cap = max_cap + 1;
-
-    let new_max_cap = col
-        .reserve_maximum_capacity(requested_max_cap)
-        .expect("must-be-ok");
-
-    assert!(new_max_cap >= requested_max_cap);
-}
-
-#[test_matrix([
+    SplitVec::with_linear_growth_and_fragments_capacity(4, 33),
     FixedVec::new(51)
 ])]
-fn fails_to_reserve_maximum_capacity<P: PinnedVec<String>>(pinned_vec: P) {
-    let mut col: PinnedConcurrentCol<_, _, MyConState> = pinned_vec.into();
+fn can_reserve_maximum_capacity<P: IntoConcurrentPinnedVec<String>>(pinned_vec: P) {
+    let mut col: PinnedConcurrentCol<_, _, MyConState> =
+        PinnedConcurrentCol::new_from_pinned(pinned_vec);
 
     let max_cap = col.maximum_capacity();
     let requested_max_cap = max_cap + 1;
 
-    let result = col.reserve_maximum_capacity(requested_max_cap);
-
-    assert!(result.is_err());
-}
-
-#[test_matrix([
-    SplitVec::with_doubling_growth_and_fragments_capacity(17),
-    SplitVec::with_doubling_growth_and_fragments_capacity(18),
-    SplitVec::with_doubling_growth_and_fragments_capacity(19),
-])]
-#[should_panic]
-fn panics_on_reserve_maximum_capacity<P: PinnedVec<String>>(pinned_vec: P) {
-    let mut col: PinnedConcurrentCol<_, _, MyConState> = pinned_vec.into();
-
-    let max_cap = col.maximum_capacity();
-    let requested_max_cap = max_cap + 1;
-
-    let new_max_cap = col
-        .reserve_maximum_capacity(requested_max_cap)
-        .expect("must-be-ok");
+    let new_max_cap = unsafe { col.reserve_maximum_capacity(0, requested_max_cap) };
 
     assert!(new_max_cap >= requested_max_cap);
 }
 
-#[test]
-fn clear() {
-    let mut vec: SplitVec<usize> = SplitVec::new();
+#[test_matrix([
+    FixedVec::new(222),
+    SplitVec::with_doubling_growth_and_fragments_capacity(16),
+    SplitVec::with_linear_growth_and_fragments_capacity(10, 33)
+])]
+fn clear<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     for i in 0..187 {
-        vec.push(i);
+        vec.push(i.to_string());
     }
 
     let mut col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
@@ -163,9 +138,7 @@ fn clear() {
     assert_eq!(col.state().initial_len, 187);
     assert_eq!(col.capacity(), col.state().initial_cap);
 
-    col.clear();
+    unsafe { col.clear(187) };
 
     assert_eq!(col.state().initial_len, 0);
-    assert_eq!(col.state().initial_cap, 4);
-    assert_eq!(col.capacity(), 4);
 }

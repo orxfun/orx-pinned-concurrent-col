@@ -38,7 +38,6 @@
     clippy::todo
 )]
 
-mod capacity;
 mod col;
 mod common_traits;
 mod errors;

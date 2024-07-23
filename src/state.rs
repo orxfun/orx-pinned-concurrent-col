@@ -1,5 +1,5 @@
 use crate::{write_permit::WritePermit, PinnedConcurrentCol};
-use orx_pinned_vec::PinnedVec;
+use orx_pinned_vec::{ConcurrentPinnedVec, PinnedVec};
 
 /// Concurrent state of the collection.
 pub trait ConcurrentState
@@ -12,6 +12,10 @@ where
     /// Creates a new state for the given `pinned_vec` which is to be wrapped by a [`PinnedConcurrentCol`].
     fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self;
 
+    /// Creates a new state for the given `con_pinned_vec` which is to be wrapped by a [`PinnedConcurrentCol`].
+    fn new_for_con_pinned_vec<T, P: ConcurrentPinnedVec<T>>(con_pinned_vec: &P, len: usize)
+        -> Self;
+
     /// Evaluates and returns the `WritePermit` for a request to write to the `idx`-th position of the given `col`.
     ///
     /// Note that [`PinnedConcurrentCol`] requires that only one growth can happen at any given point in time.
@@ -20,7 +24,7 @@ where
     /// This will be paired up with the `release_growth_handle` method, which will be called immediately after the allocation is completed.
     fn write_permit<T, P, S>(&self, col: &PinnedConcurrentCol<T, P, S>, idx: usize) -> WritePermit
     where
-        P: PinnedVec<T>,
+        P: ConcurrentPinnedVec<T>,
         S: ConcurrentState;
 
     /// Evaluates and returns the `WritePermit` for a request to write `num_items` elements to sequential positions starting from `begin_idx`-th position of the given `col`.
@@ -31,7 +35,7 @@ where
         num_items: usize,
     ) -> WritePermit
     where
-        P: PinnedVec<T>,
+        P: ConcurrentPinnedVec<T>,
         S: ConcurrentState,
     {
         let last_idx = begin_idx + num_items - 1;
@@ -53,7 +57,7 @@ where
         pinned_vec: &P,
     ) -> String
     where
-        P: PinnedVec<T>,
+        P: ConcurrentPinnedVec<T>,
     {
         "PinnedVec".to_string()
     }

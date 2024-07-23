@@ -1,6 +1,6 @@
 [package]
 name = "orx-pinned-concurrent-col"
-version = "1.6.1"
+version = "2.0.0"
 edition = "2021"
 authors = ["orxfun <orx.ugur.arikan@gmail.com>"]
 description = "A core data structure with a focus to enable high performance, possibly lock-free, concurrent collections using a PinnedVec as the underlying storage."
@@ -10,9 +10,10 @@ keywords = ["concurrency", "bag", "data-structures", "atomic", "lock-free"]
 categories = ["data-structures", "concurrency", "rust-patterns"]
 
 [dependencies]
-orx-fixed-vec = "2.12"
-orx-pinned-vec = "2.12"
-orx-split-vec = "2.14"
+orx-pseudo-default = "1.0"
+orx-fixed-vec = "3.0"
+orx-pinned-vec = "3.0"
+orx-split-vec = "3.0"
 
 [dev-dependencies]
 test-case = "3.3.1"
