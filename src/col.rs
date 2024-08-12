@@ -22,7 +22,7 @@ use std::marker::PhantomData;
 pub struct PinnedConcurrentCol<T, P, S>
 where
     P: ConcurrentPinnedVec<T>,
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     phantom: PhantomData<T>,
     con_pinned_vec: P,
@@ -33,7 +33,7 @@ where
 impl<T, P, S> Drop for PinnedConcurrentCol<T, P, S>
 where
     P: ConcurrentPinnedVec<T>,
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     fn drop(&mut self) {
         if let VecDropState::ToBeDropped = self.vec_drop_state {
@@ -50,7 +50,7 @@ where
 impl<T, P, S> PinnedConcurrentCol<T, P, S>
 where
     P: ConcurrentPinnedVec<T>,
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     // new
     /// Wraps the `pinned_vec` and converts it into a pinned concurrent collection.
@@ -59,7 +59,11 @@ where
         Q: IntoConcurrentPinnedVec<T, ConPinnedVec = P>,
     {
         let state = S::new_for_pinned_vec(&pinned_vec);
-        let con_pinned_vec = pinned_vec.into_concurrent();
+
+        let con_pinned_vec = match state.fill_memory_with() {
+            None => pinned_vec.into_concurrent(),
+            Some(f) => pinned_vec.into_concurrent_filled_with(f),
+        };
 
         Self {
             phantom: Default::default(),
@@ -292,6 +296,45 @@ where
         }
     }
 
+    /// Reserves and returns a reference for one position at the `idx`-th position.
+    ///
+    /// The caller is responsible for writing to the position.
+    ///
+    /// # Safety
+    ///
+    /// This method makes sure that the values are written to positions owned by the underlying pinned vector.
+    /// Furthermore, it makes sure that the growth of the vector happens thread-safely whenever necessary.
+    ///
+    /// On the other hand, it is unsafe due to the possibility of a race condition.
+    /// Multiple threads can try to write to the same position at the same time.
+    /// The wrapper is responsible for preventing this.
+    ///
+    /// Furthermore, the caller is responsible to write all positions of the acquired slices to make sure that the collection is gap free.
+    ///
+    /// Note that although both methods are unsafe, it is much easier to achieve required safety guarantees with `write_n_items`;
+    /// hence, it must be preferred unless there is a good reason to acquire mutable slices.
+    /// One such example case is to copy results directly into the output's slices, which could be more performant in a very critical scenario.
+    pub unsafe fn single_item_as_ref(&self, idx: usize) -> &T {
+        self.assert_has_capacity_for(idx);
+        loop {
+            let write_permit = self.state.write_permit(self, idx);
+            match write_permit {
+                WritePermit::JustWrite => {
+                    let x = self.con_pinned_vec.get(idx).unwrap();
+                    self.state.update_after_write(idx, idx + 1);
+                    return x;
+                }
+                WritePermit::GrowThenWrite => {
+                    self.grow_to(idx + 1);
+                    self.state.update_after_write(idx, idx + 1);
+                    let x = self.con_pinned_vec.get(idx).unwrap();
+                    return x;
+                }
+                WritePermit::Spin => {}
+            }
+        }
+    }
+
     /// Writes the `num_items` `values` to sequential positions starting from the `begin_idx`-th position.
     ///
     /// * If the `values` iterator has more than `num_items` elements, the excess values will be ignored.
@@ -360,13 +403,13 @@ where
     /// Note that although both methods are unsafe, it is much easier to achieve required safety guarantees with `write_n_items`;
     /// hence, it must be preferred unless there is a good reason to acquire mutable slices.
     /// One such example case is to copy results directly into the output's slices, which could be more performant in a very critical scenario.
-    pub unsafe fn n_items_buffer_as_mut_slices(
+    pub unsafe fn n_items_buffer_as_slices(
         &self,
         begin_idx: usize,
         num_items: usize,
-    ) -> <P::P as PinnedVec<T>>::SliceMutIter<'_> {
+    ) -> <P::P as PinnedVec<T>>::SliceIter<'_> {
         match num_items {
-            0 => <P::P as PinnedVec<T>>::SliceMutIter::default(),
+            0 => <P::P as PinnedVec<T>>::SliceIter::default(),
             _ => {
                 let end_idx = begin_idx + num_items;
                 let last_idx = end_idx - 1;
@@ -382,6 +425,56 @@ where
                         WritePermit::GrowThenWrite => {
                             self.grow_to(end_idx);
                             let slices = self.slices_for_n_items_at(begin_idx, num_items);
+                            self.state.update_after_write(begin_idx, end_idx);
+                            return slices;
+                        }
+                        WritePermit::Spin => {}
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reserves and returns an iterator of mutable slices for `num_items` positions starting from the `begin_idx`-th position.
+    ///
+    /// The caller is responsible for filling all `num_items` positions in the returned iterator of slices with values to avoid gaps.
+    ///
+    /// # Safety
+    ///
+    /// This method makes sure that the values are written to positions owned by the underlying pinned vector.
+    /// Furthermore, it makes sure that the growth of the vector happens thread-safely whenever necessary.
+    ///
+    /// On the other hand, it is unsafe due to the possibility of a race condition.
+    /// Multiple threads can try to write to the same position at the same time.
+    /// The wrapper is responsible for preventing this.
+    ///
+    /// Furthermore, the caller is responsible to write all positions of the acquired slices to make sure that the collection is gap free.
+    ///
+    /// Note that although both methods are unsafe, it is much easier to achieve required safety guarantees with `write_n_items`;
+    /// hence, it must be preferred unless there is a good reason to acquire mutable slices.
+    /// One such example case is to copy results directly into the output's slices, which could be more performant in a very critical scenario.
+    pub unsafe fn n_items_buffer_as_mut_slices(
+        &self,
+        begin_idx: usize,
+        num_items: usize,
+    ) -> <P::P as PinnedVec<T>>::SliceMutIter<'_> {
+        match num_items {
+            0 => <P::P as PinnedVec<T>>::SliceMutIter::default(),
+            _ => {
+                let end_idx = begin_idx + num_items;
+                let last_idx = end_idx - 1;
+                self.assert_has_capacity_for(last_idx);
+
+                loop {
+                    match self.state.write_permit_n_items(self, begin_idx, num_items) {
+                        WritePermit::JustWrite => {
+                            let slices = self.slices_mut_for_n_items_at(begin_idx, num_items);
+                            self.state.update_after_write(begin_idx, end_idx);
+                            return slices;
+                        }
+                        WritePermit::GrowThenWrite => {
+                            self.grow_to(end_idx);
+                            let slices = self.slices_mut_for_n_items_at(begin_idx, num_items);
                             self.state.update_after_write(begin_idx, end_idx);
                             return slices;
                         }
@@ -409,7 +502,7 @@ where
 impl<T, P, S> PinnedConcurrentCol<T, P, S>
 where
     P: ConcurrentPinnedVec<T>,
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     #[inline]
     fn assert_has_capacity_for(&self, idx: usize) {
@@ -434,7 +527,7 @@ where
 
         let mut values = values.into_iter();
 
-        let slices = self.slices_for_n_items_at(begin_idx, num_items);
+        let slices = self.slices_mut_for_n_items_at(begin_idx, num_items);
         for slice in slices {
             let ptr = slice.as_mut_ptr();
             let len = slice.len();
@@ -445,7 +538,7 @@ where
     }
 
     #[inline]
-    fn slices_for_n_items_at(
+    fn slices_mut_for_n_items_at(
         &self,
         begin_idx: usize,
         num_items: usize,
@@ -454,11 +547,31 @@ where
         unsafe { self.con_pinned_vec.slices_mut(begin_idx..end_idx) }
     }
 
+    #[inline]
+    fn slices_for_n_items_at(
+        &self,
+        begin_idx: usize,
+        num_items: usize,
+    ) -> <P::P as PinnedVec<T>>::SliceIter<'_> {
+        let end_idx = begin_idx + num_items;
+        self.con_pinned_vec.slices(begin_idx..end_idx)
+    }
+
     fn grow_to(&self, new_capacity: usize) {
-        let _new_capacity = self
-            .con_pinned_vec
-            .grow_to(new_capacity)
-            .expect(ERR_FAILED_TO_GROW);
+        match self.state.fill_memory_with() {
+            None => {
+                let _new_capacity = self
+                    .con_pinned_vec
+                    .grow_to(new_capacity)
+                    .expect(ERR_FAILED_TO_GROW);
+            }
+            Some(f) => {
+                let _new_capacity = self
+                    .con_pinned_vec
+                    .grow_to_and_fill_with(new_capacity, f)
+                    .expect(ERR_FAILED_TO_GROW);
+            }
+        }
 
         self.state.release_growth_handle();
     }
@@ -475,18 +588,20 @@ mod tests {
 
     #[derive(Debug)]
     #[allow(dead_code)]
-    pub struct MyConState {
+    pub struct MyConState<T> {
         pub initial_len: usize,
         pub initial_cap: usize,
         pub len: AtomicUsize,
+        phantom: PhantomData<T>,
     }
 
-    impl MyConState {
+    impl<T> MyConState<T> {
         pub fn new(initial_len: usize, initial_cap: usize) -> Self {
             Self {
                 initial_len,
                 initial_cap,
                 len: initial_len.into(),
+                phantom: Default::default(),
             }
         }
 
@@ -496,30 +611,25 @@ mod tests {
         }
     }
 
-    impl ConcurrentState for MyConState {
-        fn zero_memory(&self) -> bool {
-            false
+    impl<T> ConcurrentState<T> for MyConState<T> {
+        fn fill_memory_with(&self) -> Option<fn() -> T> {
+            None
         }
 
-        fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self {
+        fn new_for_pinned_vec<P: PinnedVec<T>>(pinned_vec: &P) -> Self {
             Self::new(pinned_vec.len(), pinned_vec.capacity())
         }
 
-        fn new_for_con_pinned_vec<T, P: ConcurrentPinnedVec<T>>(
+        fn new_for_con_pinned_vec<P: ConcurrentPinnedVec<T>>(
             con_pinned_vec: &P,
             len: usize,
         ) -> Self {
             Self::new(len, con_pinned_vec.capacity())
         }
 
-        fn write_permit<T, P, S>(
-            &self,
-            col: &PinnedConcurrentCol<T, P, S>,
-            idx: usize,
-        ) -> WritePermit
+        fn write_permit<P>(&self, col: &PinnedConcurrentCol<T, P, Self>, idx: usize) -> WritePermit
         where
             P: ConcurrentPinnedVec<T>,
-            S: ConcurrentState,
         {
             let capacity = col.capacity();
 
@@ -530,15 +640,14 @@ mod tests {
             }
         }
 
-        fn write_permit_n_items<T, P, S>(
+        fn write_permit_n_items<P>(
             &self,
-            col: &PinnedConcurrentCol<T, P, S>,
+            col: &PinnedConcurrentCol<T, P, Self>,
             begin_idx: usize,
             num_items: usize,
         ) -> WritePermit
         where
             P: ConcurrentPinnedVec<T>,
-            S: ConcurrentState,
         {
             let capacity = col.capacity();
             let last_idx = begin_idx + num_items - 1;

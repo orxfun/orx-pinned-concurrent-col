@@ -2,19 +2,21 @@ use crate::{write_permit::WritePermit, PinnedConcurrentCol};
 use orx_pinned_vec::{ConcurrentPinnedVec, PinnedVec};
 
 /// Concurrent state of the collection.
-pub trait ConcurrentState
+pub trait ConcurrentState<T>
 where
     Self: Sized,
 {
     /// Determines whether or not new allocations of the pinned vector will be automatically zeroed out immediately after allocation.
-    fn zero_memory(&self) -> bool;
+    ///
+    /// * If the method returns Some(f), new positions will be filled with f().
+    /// * Otherwise, new positions will not be initialized.
+    fn fill_memory_with(&self) -> Option<fn() -> T>;
 
     /// Creates a new state for the given `pinned_vec` which is to be wrapped by a [`PinnedConcurrentCol`].
-    fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self;
+    fn new_for_pinned_vec<P: PinnedVec<T>>(pinned_vec: &P) -> Self;
 
     /// Creates a new state for the given `con_pinned_vec` which is to be wrapped by a [`PinnedConcurrentCol`].
-    fn new_for_con_pinned_vec<T, P: ConcurrentPinnedVec<T>>(con_pinned_vec: &P, len: usize)
-        -> Self;
+    fn new_for_con_pinned_vec<P: ConcurrentPinnedVec<T>>(con_pinned_vec: &P, len: usize) -> Self;
 
     /// Evaluates and returns the `WritePermit` for a request to write to the `idx`-th position of the given `col`.
     ///
@@ -22,21 +24,19 @@ where
     /// When the result of this method is [`WritePermit::GrowThenWrite`]; i.e., when the caller thread is responsible for the growth,
     /// and if the state requires a handle, it must attain the handle with this call.
     /// This will be paired up with the `release_growth_handle` method, which will be called immediately after the allocation is completed.
-    fn write_permit<T, P, S>(&self, col: &PinnedConcurrentCol<T, P, S>, idx: usize) -> WritePermit
+    fn write_permit<P>(&self, col: &PinnedConcurrentCol<T, P, Self>, idx: usize) -> WritePermit
     where
-        P: ConcurrentPinnedVec<T>,
-        S: ConcurrentState;
+        P: ConcurrentPinnedVec<T>;
 
     /// Evaluates and returns the `WritePermit` for a request to write `num_items` elements to sequential positions starting from `begin_idx`-th position of the given `col`.
-    fn write_permit_n_items<T, P, S>(
+    fn write_permit_n_items<P>(
         &self,
-        col: &PinnedConcurrentCol<T, P, S>,
+        col: &PinnedConcurrentCol<T, P, Self>,
         begin_idx: usize,
         num_items: usize,
     ) -> WritePermit
     where
         P: ConcurrentPinnedVec<T>,
-        S: ConcurrentState,
     {
         let last_idx = begin_idx + num_items - 1;
         self.write_permit(col, last_idx)
@@ -51,7 +51,7 @@ where
 
     /// Returns the debug information of the underlying pinned vector.
     #[allow(unused_variables)]
-    fn pinned_vec_debug_info<T, P>(
+    fn pinned_vec_debug_info<P>(
         &self,
         col: &PinnedConcurrentCol<T, P, Self>,
         pinned_vec: &P,

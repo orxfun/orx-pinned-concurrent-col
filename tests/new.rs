@@ -8,7 +8,7 @@ use state::MyConState;
 
 #[test]
 fn with_doubling_growth() {
-    let col: PinnedConcurrentCol<String, _, MyConState> =
+    let col: PinnedConcurrentCol<String, _, MyConState<_>> =
         PinnedConcurrentCol::with_doubling_growth();
 
     assert_eq!(col.capacity(), 4);
@@ -19,7 +19,7 @@ fn with_doubling_growth() {
 
 #[test]
 fn with_linear_growth() {
-    let col: PinnedConcurrentCol<String, _, MyConState> =
+    let col: PinnedConcurrentCol<String, _, MyConState<_>> =
         PinnedConcurrentCol::with_linear_growth(4, 10);
 
     assert_eq!(col.capacity(), 2usize.pow(4));
@@ -30,7 +30,7 @@ fn with_linear_growth() {
 
 #[test]
 fn with_fixed_capacity() {
-    let col: PinnedConcurrentCol<String, _, MyConState> =
+    let col: PinnedConcurrentCol<String, _, MyConState<_>> =
         PinnedConcurrentCol::with_fixed_capacity(5648);
 
     assert_eq!(col.capacity(), 5648);
@@ -44,7 +44,7 @@ fn from() {
     fn validate<P: IntoConcurrentPinnedVec<String>>(pinned_vec: P) {
         let max_cap = pinned_vec.capacity_state().maximum_concurrent_capacity();
         let expected_con_state = MyConState::new_for_pinned_vec(&pinned_vec);
-        let col: PinnedConcurrentCol<_, _, MyConState> =
+        let col: PinnedConcurrentCol<_, _, MyConState<_>> =
             PinnedConcurrentCol::new_from_pinned(pinned_vec);
 
         assert_eq!(col.capacity(), expected_con_state.initial_cap);

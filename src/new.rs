@@ -4,7 +4,7 @@ use orx_split_vec::{ConcurrentSplitVec, Doubling, Linear, SplitVec};
 
 impl<T, S> PinnedConcurrentCol<T, ConcurrentSplitVec<T, Doubling>, S>
 where
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Doubling>` as the underlying storage.
     pub fn with_doubling_growth() -> Self {
@@ -14,7 +14,7 @@ where
 
 impl<T, S> PinnedConcurrentCol<T, ConcurrentSplitVec<T, Linear>, S>
 where
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Linear>` as the underlying storage.
     ///
@@ -39,7 +39,7 @@ where
 
 impl<T, S> PinnedConcurrentCol<T, ConcurrentFixedVec<T>, S>
 where
-    S: ConcurrentState,
+    S: ConcurrentState<T>,
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `FixedVec<T>` as the underlying storage.
     ///

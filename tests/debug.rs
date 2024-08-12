@@ -13,14 +13,14 @@ fn debug_split_doubling() {
         vec.push(i);
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     for i in 187..300 {
         unsafe { col.write(i, i) };
     }
 
     let debug = format!("{:?}", col);
-    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 252, len: 187 }, capacity: 508, maximum_capacity: 17179869180 }";
+    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 252, len: 187, phantom: PhantomData<usize> }, capacity: 508, maximum_capacity: 17179869180 }";
 
     assert_eq!(debug, expected);
 }
@@ -32,14 +32,14 @@ fn debug_split_linear() {
         vec.push(i);
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     for i in 187..1500 {
         unsafe { col.write(i, i) };
     }
 
     let debug = format!("{:?}", col);
-    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 1024, len: 187 }, capacity: 2048, maximum_capacity: 32768 }";
+    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 1024, len: 187, phantom: PhantomData<usize> }, capacity: 2048, maximum_capacity: 32768 }";
 
     assert_eq!(debug, expected);
 }
@@ -51,14 +51,14 @@ fn debug_fixed() {
         vec.push(i);
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     for i in 187..300 {
         unsafe { col.write(i, i) };
     }
 
     let debug = format!("{:?}", col);
-    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 333, len: 187 }, capacity: 333, maximum_capacity: 333 }";
+    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 333, len: 187, phantom: PhantomData<usize> }, capacity: 333, maximum_capacity: 333 }";
 
     assert_eq!(debug, expected);
 }

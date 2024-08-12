@@ -21,7 +21,7 @@ fn write_drop_col<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
         vec.push(idx.to_string());
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     for idx in len1..len2 {
         unsafe { col.write(idx, idx.to_string()) };
@@ -48,7 +48,7 @@ fn write_drop_vec<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
         vec.push(idx.to_string());
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     for idx in len1..len2 {
         unsafe { col.write(idx, idx.to_string()) };
