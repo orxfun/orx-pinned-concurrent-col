@@ -2,23 +2,26 @@ use orx_pinned_concurrent_col::*;
 use orx_pinned_vec::{ConcurrentPinnedVec, PinnedVec};
 use std::{
     cmp::Ordering,
+    marker::PhantomData,
     sync::atomic::{self, AtomicUsize},
 };
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct MyConState {
+pub struct MyConState<T> {
     pub initial_len: usize,
     pub initial_cap: usize,
     pub len: AtomicUsize,
+    phantom: PhantomData<T>,
 }
 
-impl MyConState {
+impl<T> MyConState<T> {
     pub fn new(initial_len: usize, initial_cap: usize) -> Self {
         Self {
             initial_len,
             initial_cap,
             len: initial_len.into(),
+            phantom: Default::default(),
         }
     }
 
@@ -38,26 +41,22 @@ impl MyConState {
     }
 }
 
-impl ConcurrentState for MyConState {
-    fn zero_memory(&self) -> bool {
-        false
+impl<T> ConcurrentState<T> for MyConState<T> {
+    fn fill_memory_with(&self) -> Option<fn() -> T> {
+        None
     }
 
-    fn new_for_pinned_vec<T, P: PinnedVec<T>>(pinned_vec: &P) -> Self {
+    fn new_for_pinned_vec<P: PinnedVec<T>>(pinned_vec: &P) -> Self {
         Self::new(pinned_vec.len(), pinned_vec.capacity())
     }
 
-    fn new_for_con_pinned_vec<T, P: ConcurrentPinnedVec<T>>(
-        con_pinned_vec: &P,
-        len: usize,
-    ) -> Self {
+    fn new_for_con_pinned_vec<P: ConcurrentPinnedVec<T>>(con_pinned_vec: &P, len: usize) -> Self {
         Self::new(len, con_pinned_vec.capacity())
     }
 
-    fn write_permit<T, P, S>(&self, col: &PinnedConcurrentCol<T, P, S>, idx: usize) -> WritePermit
+    fn write_permit<P>(&self, col: &PinnedConcurrentCol<T, P, Self>, idx: usize) -> WritePermit
     where
         P: ConcurrentPinnedVec<T>,
-        S: ConcurrentState,
     {
         let capacity = col.capacity();
 
@@ -68,15 +67,14 @@ impl ConcurrentState for MyConState {
         }
     }
 
-    fn write_permit_n_items<T, P, S>(
+    fn write_permit_n_items<P>(
         &self,
-        col: &PinnedConcurrentCol<T, P, S>,
+        col: &PinnedConcurrentCol<T, P, Self>,
         begin_idx: usize,
         num_items: usize,
     ) -> WritePermit
     where
         P: ConcurrentPinnedVec<T>,
-        S: ConcurrentState,
     {
         let capacity = col.capacity();
         let last_idx = begin_idx + num_items - 1;

@@ -13,7 +13,7 @@ fn new_from_pinned() {
     let pinned_vec: SplitVec<String> = SplitVec::with_doubling_growth_and_fragments_capacity(32);
     let expected_state = MyConState::new_for_pinned_vec(&pinned_vec);
 
-    let col: PinnedConcurrentCol<_, _, MyConState> =
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> =
         PinnedConcurrentCol::new_from_pinned(pinned_vec.clone());
 
     assert_eq!(col.state().initial_len, expected_state.initial_len);
@@ -31,7 +31,7 @@ fn into_inner() {
     vec.push("a".to_string());
     vec.push("b".to_string());
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     let vec_back = unsafe { col.into_inner(2) };
     assert_eq!(&vec_back, &["a".to_string(), "b".to_string()]);
@@ -47,7 +47,7 @@ fn iter<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
         vec.push(i.to_string());
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     let iter = unsafe { col.iter(0) };
     assert_eq!(iter.count(), 0);
@@ -75,7 +75,7 @@ fn get<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
         vec.push(i.to_string());
     }
 
-    let col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
 
     assert_eq!(unsafe { col.get(4) }, Some(&String::from("4")));
     assert_eq!(unsafe { col.get(186) }, Some(&String::from("186")));
@@ -97,7 +97,8 @@ fn get_mut<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
         vec.push(i.to_string());
     }
 
-    let mut col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let mut col: PinnedConcurrentCol<_, _, MyConState<_>> =
+        PinnedConcurrentCol::new_from_pinned(vec);
 
     let element42 = unsafe { col.get_mut(42) }.expect("is-some");
     *element42 = "x".to_string();
@@ -112,7 +113,7 @@ fn get_mut<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     FixedVec::new(51)
 ])]
 fn can_reserve_maximum_capacity<P: IntoConcurrentPinnedVec<String>>(pinned_vec: P) {
-    let mut col: PinnedConcurrentCol<_, _, MyConState> =
+    let mut col: PinnedConcurrentCol<_, _, MyConState<_>> =
         PinnedConcurrentCol::new_from_pinned(pinned_vec);
 
     let max_cap = col.maximum_capacity();
@@ -133,7 +134,8 @@ fn clear<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
         vec.push(i.to_string());
     }
 
-    let mut col: PinnedConcurrentCol<_, _, MyConState> = PinnedConcurrentCol::new_from_pinned(vec);
+    let mut col: PinnedConcurrentCol<_, _, MyConState<_>> =
+        PinnedConcurrentCol::new_from_pinned(vec);
 
     assert_eq!(col.state().initial_len, 187);
     assert_eq!(col.capacity(), col.state().initial_cap);
