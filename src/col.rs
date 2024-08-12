@@ -314,20 +314,27 @@ where
     /// Note that although both methods are unsafe, it is much easier to achieve required safety guarantees with `write_n_items`;
     /// hence, it must be preferred unless there is a good reason to acquire mutable slices.
     /// One such example case is to copy results directly into the output's slices, which could be more performant in a very critical scenario.
+    #[allow(clippy::missing_panics_doc)]
     pub unsafe fn single_item_as_ref(&self, idx: usize) -> &T {
         self.assert_has_capacity_for(idx);
         loop {
             let write_permit = self.state.write_permit(self, idx);
             match write_permit {
                 WritePermit::JustWrite => {
-                    let x = self.con_pinned_vec.get(idx).unwrap();
+                    let x = self
+                        .con_pinned_vec
+                        .get(idx)
+                        .expect("should succeed since has capacity for idx");
                     self.state.update_after_write(idx, idx + 1);
                     return x;
                 }
                 WritePermit::GrowThenWrite => {
                     self.grow_to(idx + 1);
                     self.state.update_after_write(idx, idx + 1);
-                    let x = self.con_pinned_vec.get(idx).unwrap();
+                    let x = self
+                        .con_pinned_vec
+                        .get(idx)
+                        .expect("should succeed since has capacity for idx");
                     return x;
                 }
                 WritePermit::Spin => {}
