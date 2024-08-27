@@ -144,3 +144,36 @@ fn clear<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
 
     assert_eq!(col.state().initial_len, 0);
 }
+
+#[test_matrix([
+    FixedVec::new(2222),
+    SplitVec::with_doubling_growth_and_fragments_capacity(16),
+    SplitVec::with_linear_growth_and_fragments_capacity(10, 33)
+])]
+fn clone<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
+    let len1 = 5;
+    let len2 = 2000;
+
+    for i in 0..len1 {
+        vec.push(i.to_string());
+    }
+
+    let col: PinnedConcurrentCol<_, _, MyConState<_>> = PinnedConcurrentCol::new_from_pinned(vec);
+
+    let clone_col = unsafe { col.clone_with_len(len1) };
+
+    assert_eq!(col.state().initial_len, len1);
+    assert_eq!(col.capacity(), col.state().initial_cap);
+    assert_eq!(clone_col.state().initial_len, len1);
+
+    for i in len1..len2 {
+        unsafe { clone_col.write(i, i.to_string()) };
+    }
+
+    assert_eq!(col.state().initial_len, len1);
+    assert_eq!(col.capacity(), col.state().initial_cap);
+    assert_eq!(clone_col.state().initial_len, len1);
+
+    col.state().set_final_len(len1);
+    clone_col.state().set_final_len(len2);
+}
