@@ -36,13 +36,27 @@ where
     S: ConcurrentState<T>,
 {
     fn drop(&mut self) {
-        if let VecDropState::ToBeDropped = self.vec_drop_state {
-            self.vec_drop_state = VecDropState::TakenOut;
-            let capacity = self.con_pinned_vec.capacity();
-            let no_gap_len = self.state.try_get_no_gap_len().unwrap_or(capacity);
-            let len = [no_gap_len].into_iter().fold(capacity, usize::min);
-
-            unsafe { self.con_pinned_vec.set_pinned_vec_len(len) };
+        match self.vec_drop_state {
+            VecDropState::ToBeDropped => {
+                let len = match self.state().fill_memory_with().is_some() {
+                    true => self.con_pinned_vec.capacity(),
+                    false => {
+                        let capacity = self.con_pinned_vec.capacity();
+                        let no_gap_len = self.state.try_get_no_gap_len().unwrap_or(capacity);
+                        let len = [no_gap_len].into_iter().fold(capacity, usize::min);
+                        len
+                    }
+                };
+                self.vec_drop_state = VecDropState::TakenOut;
+                unsafe { self.con_pinned_vec.set_pinned_vec_len(len) };
+            }
+            VecDropState::TakenOut => {
+                let len = match self.state().fill_memory_with().is_some() {
+                    true => self.con_pinned_vec.capacity(),
+                    false => 0,
+                };
+                unsafe { self.con_pinned_vec.set_pinned_vec_len(len) };
+            }
         }
     }
 }
@@ -106,12 +120,62 @@ where
     {
         self.vec_drop_state = VecDropState::TakenOut;
 
-        self.con_pinned_vec.set_pinned_vec_len(pinned_vec_len);
-
         let mut inner = <P::P as PseudoDefault>::pseudo_default().into_concurrent();
+        match self.state.fill_memory_with() {
+            Some(fill_with) => {
+                inner.fill_with(0..inner.capacity(), fill_with);
+                inner.set_pinned_vec_len(inner.capacity());
+            }
+            None => inner.set_pinned_vec_len(0),
+        }
+
         std::mem::swap(&mut inner, &mut self.con_pinned_vec);
 
         inner.into_inner(pinned_vec_len)
+    }
+
+    /// Clones the underlying pinned vector, sets its length to the given `pinned_vec_len` and returns the vector.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe as pinned concurrent collection does not keep track of the writes and length.
+    /// This is the responsibility of the wrapper through the specific `ConcurrentState` implementation.
+    /// Therefore, the following situation is possible:
+    /// * concurrent collection is created with an empty pinned vector.
+    /// * the caller calls `reserve_maximum_capacity` with sufficient capacity, say 2.
+    /// * then, `write(1, value)` is called by writing to the second position, skipping the first position.
+    /// * and finally, calls `clone_inner(2)`.
+    ///
+    /// This would return a pinned vector with a valid entry at position 1 but uninitialized value at position 0, which would lead to an undefined behavior.
+    ///
+    /// Therefore, the wrapper must ensure that the pinned vector is in a valid state before taking it out.
+    ///
+    /// ## Safe Usage Examples
+    ///
+    /// The unsafe `clone_inner` method can be wrapped with a safe method if the following guarantee is satisfied:
+    /// * All values in range `0..pinned_vec_len` of the concurrent collection are written.
+    ///
+    /// Two such example wrappers are [`ConcurrentBag`](https://crates.io/crates/orx-concurrent-bag) and [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
+    /// - Concurrent bag and vector do not allow leaving gaps, and only push to the back of the collection.
+    /// - Furthermore, they keep track of the number of pushes.
+    /// - Therefore, they can safely extract the pinned vector out with the length that it correctly knows.
+    pub unsafe fn clone_with_len(&self, pinned_vec_len: usize) -> Self
+    where
+        T: Clone,
+    {
+        let con_pinned_vec = self.con_pinned_vec.clone_with_len(pinned_vec_len);
+        if let Some(fill_with) = self.state.fill_memory_with() {
+            let range_to_fill = pinned_vec_len..con_pinned_vec.capacity();
+            con_pinned_vec.fill_with(range_to_fill, fill_with);
+        }
+
+        let state = S::new_for_con_pinned_vec(&con_pinned_vec, pinned_vec_len);
+        Self {
+            phantom: Default::default(),
+            state,
+            con_pinned_vec,
+            vec_drop_state: VecDropState::ToBeDropped,
+        }
     }
 
     // getters
