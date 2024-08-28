@@ -1,5 +1,4 @@
 mod state;
-
 use orx_fixed_vec::FixedVec;
 use orx_pinned_concurrent_col::*;
 use orx_pinned_vec::{IntoConcurrentPinnedVec, PinnedVec};
@@ -43,7 +42,7 @@ fn with_fixed_capacity() {
 fn from() {
     fn validate<P: IntoConcurrentPinnedVec<String>>(pinned_vec: P) {
         let max_cap = pinned_vec.capacity_state().maximum_concurrent_capacity();
-        let expected_con_state = MyConState::new_for_pinned_vec(&pinned_vec);
+        let expected_con_state = MyConState::<_>::new_for_pinned_vec(&pinned_vec);
         let col: PinnedConcurrentCol<_, _, MyConState<_>> =
             PinnedConcurrentCol::new_from_pinned(pinned_vec);
 
