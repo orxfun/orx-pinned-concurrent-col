@@ -43,8 +43,7 @@ where
                     false => {
                         let capacity = self.con_pinned_vec.capacity();
                         let no_gap_len = self.state.try_get_no_gap_len().unwrap_or(capacity);
-                        let len = [no_gap_len].into_iter().fold(capacity, usize::min);
-                        len
+                        [no_gap_len].into_iter().fold(capacity, usize::min)
                     }
                 };
                 self.vec_drop_state = VecDropState::TakenOut;
