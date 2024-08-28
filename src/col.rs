@@ -322,8 +322,18 @@ where
         current_len: usize,
         maximum_capacity: usize,
     ) -> usize {
-        self.con_pinned_vec
-            .reserve_maximum_concurrent_capacity(current_len, maximum_capacity)
+        match self.state.fill_memory_with() {
+            Some(fill_with) => self
+                .con_pinned_vec
+                .reserve_maximum_concurrent_capacity_fill_with(
+                    current_len,
+                    maximum_capacity,
+                    fill_with,
+                ),
+            None => self
+                .con_pinned_vec
+                .reserve_maximum_concurrent_capacity(current_len, maximum_capacity),
+        }
     }
 
     /// Writes the `value` to the `idx`-th position.

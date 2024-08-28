@@ -1,5 +1,4 @@
 mod state;
-
 use orx_fixed_vec::FixedVec;
 use orx_pinned_concurrent_col::*;
 use orx_pinned_vec::PinnedVec;
@@ -11,7 +10,7 @@ use test_case::test_matrix;
 #[test]
 fn new_from_pinned() {
     let pinned_vec: SplitVec<String> = SplitVec::with_doubling_growth_and_fragments_capacity(32);
-    let expected_state = MyConState::new_for_pinned_vec(&pinned_vec);
+    let expected_state = MyConState::<_>::new_for_pinned_vec(&pinned_vec);
 
     let col: PinnedConcurrentCol<_, _, MyConState<_>> =
         PinnedConcurrentCol::new_from_pinned(pinned_vec.clone());
