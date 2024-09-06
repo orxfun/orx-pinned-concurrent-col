@@ -1,9 +1,9 @@
 use crate::{
     errors::*, mem_state::VecDropState, state::ConcurrentState, write_permit::WritePermit,
 };
+use core::marker::PhantomData;
 use orx_pinned_vec::{ConcurrentPinnedVec, IntoConcurrentPinnedVec, PinnedVec};
 use orx_pseudo_default::PseudoDefault;
-use std::marker::PhantomData;
 
 /// A core data structure with a focus to enable high performance, possibly lock-free, concurrent collections using a [`PinnedVec`](https://crates.io/crates/orx-pinned-vec) as the underlying storage.
 ///
@@ -128,7 +128,7 @@ where
             None => inner.set_pinned_vec_len(0),
         }
 
-        std::mem::swap(&mut inner, &mut self.con_pinned_vec);
+        core::mem::swap(&mut inner, &mut self.con_pinned_vec);
 
         inner.into_inner(pinned_vec_len)
     }
@@ -660,11 +660,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orx_pinned_vec::PinnedVec;
-    use std::{
+    use core::{
         cmp::Ordering,
         sync::atomic::{self, AtomicUsize},
     };
+    use orx_pinned_vec::PinnedVec;
 
     #[derive(Debug)]
     #[allow(dead_code)]
@@ -733,8 +733,8 @@ mod tests {
             let last_idx = begin_idx + num_items - 1;
 
             match (begin_idx.cmp(&capacity), last_idx.cmp(&capacity)) {
-                (_, std::cmp::Ordering::Less) => WritePermit::JustWrite,
-                (std::cmp::Ordering::Greater, _) => WritePermit::Spin,
+                (_, core::cmp::Ordering::Less) => WritePermit::JustWrite,
+                (core::cmp::Ordering::Greater, _) => WritePermit::Spin,
                 _ => WritePermit::GrowThenWrite,
             }
         }
