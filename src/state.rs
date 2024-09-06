@@ -1,4 +1,5 @@
 use crate::{write_permit::WritePermit, PinnedConcurrentCol};
+use alloc::string::{String, ToString};
 use orx_pinned_vec::{ConcurrentPinnedVec, PinnedVec};
 
 /// Concurrent state of the collection.

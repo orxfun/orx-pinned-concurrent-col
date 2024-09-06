@@ -1,13 +1,13 @@
 use crate::{ConcurrentState, PinnedConcurrentCol};
+use core::fmt::Debug;
 use orx_pinned_vec::ConcurrentPinnedVec;
-use std::fmt::Debug;
 
 impl<T, P, S> Debug for PinnedConcurrentCol<T, P, S>
 where
     P: ConcurrentPinnedVec<T>,
     S: ConcurrentState<T> + Debug,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("PinnedConcurrentCol")
             .field("state", &self.state())
             .field("capacity", &self.capacity())
