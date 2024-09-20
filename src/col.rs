@@ -1,7 +1,7 @@
 use crate::{
     errors::*, mem_state::VecDropState, state::ConcurrentState, write_permit::WritePermit,
 };
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ops::RangeBounds};
 use orx_pinned_vec::{ConcurrentPinnedVec, IntoConcurrentPinnedVec, PinnedVec};
 use orx_pseudo_default::PseudoDefault;
 
@@ -223,6 +223,35 @@ where
     /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
     pub unsafe fn iter(&self, len: usize) -> impl Iterator<Item = &T> {
         self.con_pinned_vec.iter(len)
+    }
+
+    /// Returns an iterator to the elements of the underlying pinned vector over the given `range`.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe due to two reasons.
+    ///
+    /// * Firstly, `PinnedConcurrentCol` does not guarantee that all positions are initialized.
+    /// It is possible to create the collection, skip the first position and directly write to the second position.
+    /// In this case, the `iter` call would read an uninitialized value at the first position.
+    ///
+    /// * Secondly, `PinnedConcurrentCol` focuses on lock-free writing.
+    /// Therefore, while the iterator is reading an element, another thread might be writing to this position.
+    ///
+    /// ## Example Safe Usage
+    ///
+    /// This method can be wrapped by a safe method provided that the following safety requirement can be guaranteed:
+    ///* All values in `range` of the concurrent collection are written.
+    ///
+    /// An example can be seen in [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
+    /// - Concurrent vec zeroes memory on allocation.
+    /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
+    /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
+    pub unsafe fn iter_over_range<R: RangeBounds<usize>>(
+        &self,
+        range: R,
+    ) -> impl Iterator<Item = &T> {
+        self.con_pinned_vec.iter_over_range(range)
     }
 
     /// Returns a mutable iterator to the elements of the underlying pinned vector starting from the first element and taking `len` elements.
