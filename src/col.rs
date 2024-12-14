@@ -206,16 +206,16 @@ where
     /// This method is unsafe due to two reasons.
     ///
     /// * Firstly, `PinnedConcurrentCol` does not guarantee that all positions are initialized.
-    /// It is possible to create the collection, skip the first position and directly write to the second position.
-    /// In this case, the `iter` call would read an uninitialized value at the first position.
+    ///   It is possible to create the collection, skip the first position and directly write to the second position.
+    ///   In this case, the `iter` call would read an uninitialized value at the first position.
     ///
     /// * Secondly, `PinnedConcurrentCol` focuses on lock-free writing.
-    /// Therefore, while the iterator is reading an element, another thread might be writing to this position.
+    ///   Therefore, while the iterator is reading an element, another thread might be writing to this position.
     ///
     /// ## Example Safe Usage
     ///
     /// This method can be wrapped by a safe method provided that the following safety requirement can be guaranteed:
-    ///* All values in range `0..pinned_vec_len` of the concurrent collection are written.
+    /// * All values in range `0..pinned_vec_len` of the concurrent collection are written.
     ///
     /// An example can be seen in [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
     /// - Concurrent vec zeroes memory on allocation.
@@ -232,16 +232,16 @@ where
     /// This method is unsafe due to two reasons.
     ///
     /// * Firstly, `PinnedConcurrentCol` does not guarantee that all positions are initialized.
-    /// It is possible to create the collection, skip the first position and directly write to the second position.
-    /// In this case, the `iter` call would read an uninitialized value at the first position.
+    ///   It is possible to create the collection, skip the first position and directly write to the second position.
+    ///   In this case, the `iter` call would read an uninitialized value at the first position.
     ///
     /// * Secondly, `PinnedConcurrentCol` focuses on lock-free writing.
-    /// Therefore, while the iterator is reading an element, another thread might be writing to this position.
+    ///   Therefore, while the iterator is reading an element, another thread might be writing to this position.
     ///
     /// ## Example Safe Usage
     ///
     /// This method can be wrapped by a safe method provided that the following safety requirement can be guaranteed:
-    ///* All values in `range` of the concurrent collection are written.
+    /// * All values in `range` of the concurrent collection are written.
     ///
     /// An example can be seen in [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
     /// - Concurrent vec zeroes memory on allocation.
@@ -261,13 +261,13 @@ where
     /// This method is unsafe due to the following reasons:
     ///
     /// * `PinnedConcurrentCol` does not guarantee that all positions are initialized.
-    /// It is possible to create the collection, skip the first position and directly write to the second position.
-    /// In this case, the `iter` call would read an uninitialized value at the first position.
+    ///   It is possible to create the collection, skip the first position and directly write to the second position.
+    ///   In this case, the `iter` call would read an uninitialized value at the first position.
     ///
     /// ## Example Safe Usage
     ///
     /// This method can be wrapped by a safe method provided that the following safety requirement can be guaranteed:
-    ///* All values in range `0..pinned_vec_len` of the concurrent collection are written.
+    /// * All values in range `0..pinned_vec_len` of the concurrent collection are written.
     ///
     /// An example can be seen in [`ConcurrentVec`](https://crates.io/crates/orx-concurrent-vec).
     /// - Concurrent vec zeroes memory on allocation.
@@ -284,11 +284,11 @@ where
     /// This method is unsafe due to two reasons.
     ///
     /// * Firstly, `PinnedConcurrentCol` does not guarantee that all positions are initialized.
-    /// It is possible to create the collection, skip the first position and directly write to the second position.
-    /// In this case, the `get` call would read an uninitialized value at the first position.
+    ///   It is possible to create the collection, skip the first position and directly write to the second position.
+    ///   In this case, the `get` call would read an uninitialized value at the first position.
     ///
     /// * Secondly, `PinnedConcurrentCol` focuses on lock-free writing.
-    /// Therefore, while the get method is reading an element, another thread might be writing to this position.
+    ///   Therefore, while the get method is reading an element, another thread might be writing to this position.
     ///
     /// ## Example Safe Usage
     ///
@@ -310,8 +310,8 @@ where
     /// This method is unsafe due to the following reason.
     ///
     /// * `PinnedConcurrentCol` does not guarantee that all positions are initialized.
-    /// It is possible to create the collection, skip the first position and directly write to the second position.
-    /// In this case, the `get` call would read an uninitialized value at the first position.
+    ///   It is possible to create the collection, skip the first position and directly write to the second position.
+    ///   In this case, the `get` call would read an uninitialized value at the first position.
     ///
     /// ## Example Safe Usage
     ///
