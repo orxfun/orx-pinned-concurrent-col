@@ -1,6 +1,7 @@
 # orx-pinned-concurrent-col
 
 [![orx-pinned-concurrent-col crate](https://img.shields.io/crates/v/orx-pinned-concurrent-col.svg)](https://crates.io/crates/orx-pinned-concurrent-col)
+[![orx-pinned-concurrent-col crate](https://img.shields.io/crates/d/orx-pinned-concurrent-col.svg)](https://crates.io/crates/orx-pinned-concurrent-col)
 [![orx-pinned-concurrent-col documentation](https://docs.rs/orx-pinned-concurrent-col/badge.svg)](https://docs.rs/orx-pinned-concurrent-col)
 
 A core data structure with a focus to enable high performance lock-free concurrent collections using a [`PinnedVec`](https://crates.io/crates/orx-pinned-vec) as the underlying storage.
@@ -24,4 +25,4 @@ Contributions are welcome! If you notice an error, have a question or think some
 
 ## License
 
-This library is licensed under MIT license. See LICENSE for details.
+Dual-licensed under [Apache 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
