@@ -516,9 +516,9 @@ where
         &self,
         begin_idx: usize,
         num_items: usize,
-    ) -> <P::P as PinnedVec<T>>::SliceIter<'_> {
+    ) -> P::SliceIter<'_> {
         match num_items {
-            0 => <P::P as PinnedVec<T>>::SliceIter::default(),
+            0 => P::SliceIter::default(),
             _ => {
                 let end_idx = begin_idx + num_items;
                 let last_idx = end_idx - 1;
@@ -566,9 +566,9 @@ where
         &self,
         begin_idx: usize,
         num_items: usize,
-    ) -> <P::P as PinnedVec<T>>::SliceMutIter<'_> {
+    ) -> P::SliceMutIter<'_> {
         match num_items {
-            0 => <P::P as PinnedVec<T>>::SliceMutIter::default(),
+            0 => P::SliceMutIter::default(),
             _ => {
                 let end_idx = begin_idx + num_items;
                 let last_idx = end_idx - 1;
@@ -647,21 +647,13 @@ where
     }
 
     #[inline]
-    fn slices_mut_for_n_items_at(
-        &self,
-        begin_idx: usize,
-        num_items: usize,
-    ) -> <P::P as PinnedVec<T>>::SliceMutIter<'_> {
+    fn slices_mut_for_n_items_at(&self, begin_idx: usize, num_items: usize) -> P::SliceMutIter<'_> {
         let end_idx = begin_idx + num_items;
         unsafe { self.con_pinned_vec.slices_mut(begin_idx..end_idx) }
     }
 
     #[inline]
-    fn slices_for_n_items_at(
-        &self,
-        begin_idx: usize,
-        num_items: usize,
-    ) -> <P::P as PinnedVec<T>>::SliceIter<'_> {
+    fn slices_for_n_items_at(&self, begin_idx: usize, num_items: usize) -> P::SliceIter<'_> {
         let end_idx = begin_idx + num_items;
         self.con_pinned_vec.slices(begin_idx..end_idx)
     }
