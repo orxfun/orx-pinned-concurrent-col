@@ -9,7 +9,7 @@ use test_case::test_matrix;
 
 #[test]
 fn new_from_pinned() {
-    let pinned_vec: SplitVec<String> = SplitVec::with_doubling_growth_and_fragments_capacity(32);
+    let pinned_vec: SplitVec<String> = SplitVec::with_doubling_growth_and_max_concurrent_capacity();
     let expected_state = MyConState::<_>::new_for_pinned_vec(&pinned_vec);
 
     let col: PinnedConcurrentCol<_, _, MyConState<_>> =

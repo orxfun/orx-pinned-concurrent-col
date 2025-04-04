@@ -17,7 +17,7 @@ fn with_doubling_growth() {
     #[cfg(target_pointer_width = "64")]
     assert_eq!(col.maximum_capacity(), 17_179_869_180);
     #[cfg(target_pointer_width = "32")]
-    assert_eq!(col.maximum_capacity(), 12);
+    assert_eq!(col.maximum_capacity(), 2_147_483_644);
 }
 
 #[test]
@@ -58,12 +58,12 @@ fn from() {
 
     validate(SplitVec::new());
     validate(SplitVec::with_doubling_growth());
-    validate(SplitVec::with_doubling_growth_and_fragments_capacity(32));
+    validate(SplitVec::with_doubling_growth_and_max_concurrent_capacity());
     validate(SplitVec::with_linear_growth(10));
     validate(SplitVec::with_linear_growth_and_fragments_capacity(10, 10));
     validate(FixedVec::new(1024));
 
-    let mut vec = SplitVec::with_doubling_growth_and_fragments_capacity(32);
+    let mut vec = SplitVec::with_doubling_growth_and_max_concurrent_capacity();
     for _ in 0..1234 {
         vec.push("hello".to_string());
     }
