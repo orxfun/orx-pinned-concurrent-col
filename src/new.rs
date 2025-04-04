@@ -8,7 +8,7 @@ where
 {
     /// Creates a new concurrent bag by creating and wrapping up a new `SplitVec<T, Doubling>` as the underlying storage.
     pub fn with_doubling_growth() -> Self {
-        Self::new_from_pinned(SplitVec::with_doubling_growth_and_fragments_capacity(32))
+        Self::new_from_pinned(SplitVec::with_doubling_growth_and_max_concurrent_capacity())
     }
 }
 

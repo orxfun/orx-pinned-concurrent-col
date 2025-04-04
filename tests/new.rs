@@ -11,9 +11,13 @@ fn with_doubling_growth() {
         PinnedConcurrentCol::with_doubling_growth();
 
     assert_eq!(col.capacity(), 4);
-    assert_eq!(col.maximum_capacity(), 17_179_869_180);
     assert_eq!(col.state().initial_len, 0);
     assert_eq!(col.state().initial_cap, 4);
+
+    #[cfg(target_pointer_width = "64")]
+    assert_eq!(col.maximum_capacity(), 17_179_869_180);
+    #[cfg(target_pointer_width = "32")]
+    assert_eq!(col.maximum_capacity(), 12);
 }
 
 #[test]
