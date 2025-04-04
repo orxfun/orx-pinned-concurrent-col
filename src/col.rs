@@ -123,14 +123,14 @@ where
         match self.state.fill_memory_with() {
             Some(fill_with) => {
                 inner.fill_with(0..inner.capacity(), fill_with);
-                inner.set_pinned_vec_len(inner.capacity());
+                unsafe { inner.set_pinned_vec_len(inner.capacity()) };
             }
-            None => inner.set_pinned_vec_len(0),
+            None => unsafe { inner.set_pinned_vec_len(0) },
         }
 
         core::mem::swap(&mut inner, &mut self.con_pinned_vec);
 
-        inner.into_inner(pinned_vec_len)
+        unsafe { inner.into_inner(pinned_vec_len) }
     }
 
     /// Clones the underlying pinned vector, sets its length to the given `pinned_vec_len` and returns the vector.
@@ -162,7 +162,7 @@ where
     where
         T: Clone,
     {
-        let con_pinned_vec = self.con_pinned_vec.clone_with_len(pinned_vec_len);
+        let con_pinned_vec = unsafe { self.con_pinned_vec.clone_with_len(pinned_vec_len) };
         if let Some(fill_with) = self.state.fill_memory_with() {
             let range_to_fill = pinned_vec_len..con_pinned_vec.capacity();
             con_pinned_vec.fill_with(range_to_fill, fill_with);
@@ -222,7 +222,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
     pub unsafe fn iter(&self, len: usize) -> impl Iterator<Item = &T> {
-        self.con_pinned_vec.iter(len)
+        unsafe { self.con_pinned_vec.iter(len) }
     }
 
     /// Returns an iterator to the elements of the underlying pinned vector over the given `range`.
@@ -251,7 +251,7 @@ where
         &self,
         range: R,
     ) -> impl Iterator<Item = &T> {
-        self.con_pinned_vec.iter_over_range(range)
+        unsafe { self.con_pinned_vec.iter_over_range(range) }
     }
 
     /// Returns a mutable iterator to the elements of the underlying pinned vector starting from the first element and taking `len` elements.
@@ -274,7 +274,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The iter wrapper simply skips `None`s which correspond to uninitialized values.
     pub unsafe fn iter_mut(&mut self, len: usize) -> impl Iterator<Item = &mut T> {
-        self.con_pinned_vec.iter_mut(len)
+        unsafe { self.con_pinned_vec.iter_mut(len) }
     }
 
     /// Returns a reference to the element written at the `index`-th position.
@@ -300,7 +300,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The get method wrapper simply the value, which will be `None` for uninitialized values.
     pub unsafe fn get(&self, index: usize) -> Option<&T> {
-        self.con_pinned_vec.get(index)
+        unsafe { self.con_pinned_vec.get(index) }
     }
 
     /// Returns a mutable reference to the element written at the `index`-th position.
@@ -323,7 +323,7 @@ where
     /// - Furthermore, it uses a pinned vector of `Option<T>` to represent a collection of `T`s. It has a valid zero value, `Option::None`.
     /// - The get_mut method wrapper will return `None` for uninitialized values.
     pub unsafe fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.con_pinned_vec.get_mut(index)
+        unsafe { self.con_pinned_vec.get_mut(index) }
     }
 
     // mutations
@@ -351,16 +351,18 @@ where
         maximum_capacity: usize,
     ) -> usize {
         match self.state.fill_memory_with() {
-            Some(fill_with) => self
-                .con_pinned_vec
-                .reserve_maximum_concurrent_capacity_fill_with(
-                    current_len,
-                    maximum_capacity,
-                    fill_with,
-                ),
-            None => self
-                .con_pinned_vec
-                .reserve_maximum_concurrent_capacity(current_len, maximum_capacity),
+            Some(fill_with) => unsafe {
+                self.con_pinned_vec
+                    .reserve_maximum_concurrent_capacity_fill_with(
+                        current_len,
+                        maximum_capacity,
+                        fill_with,
+                    )
+            },
+            None => unsafe {
+                self.con_pinned_vec
+                    .reserve_maximum_concurrent_capacity(current_len, maximum_capacity)
+            },
         }
     }
 
@@ -423,21 +425,22 @@ where
             let write_permit = self.state.write_permit(self, idx);
             match write_permit {
                 WritePermit::JustWrite => {
-                    let x = self
-                        .con_pinned_vec
-                        .get(idx)
-                        .expect("should succeed since has capacity for idx");
+                    let x = unsafe {
+                        self.con_pinned_vec
+                            .get(idx)
+                            .expect("should succeed since has capacity for idx")
+                    };
                     self.state.update_after_write(idx, idx + 1);
                     return x;
                 }
                 WritePermit::GrowThenWrite => {
                     self.grow_to(idx + 1);
                     self.state.update_after_write(idx, idx + 1);
-                    let x = self
-                        .con_pinned_vec
-                        .get(idx)
-                        .expect("should succeed since has capacity for idx");
-                    return x;
+                    return unsafe {
+                        self.con_pinned_vec
+                            .get(idx)
+                            .expect("should succeed since has capacity for idx")
+                    };
                 }
                 WritePermit::Spin => {}
             }
@@ -601,7 +604,7 @@ where
     ///
     /// This method can safely be called if entries in all positions 0..len are written
     pub unsafe fn clear(&mut self, prior_len: usize) {
-        self.con_pinned_vec.clear(prior_len);
+        unsafe { self.con_pinned_vec.clear(prior_len) };
         self.state = S::new_for_con_pinned_vec(&self.con_pinned_vec, 0);
     }
 }
