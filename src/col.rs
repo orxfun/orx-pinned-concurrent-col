@@ -2,7 +2,7 @@ use crate::{
     errors::*, mem_state::VecDropState, state::ConcurrentState, write_permit::WritePermit,
 };
 use core::{marker::PhantomData, ops::RangeBounds};
-use orx_pinned_vec::{ConcurrentPinnedVec, IntoConcurrentPinnedVec, PinnedVec};
+use orx_pinned_vec::{ConcurrentPinnedVec, IntoConcurrentPinnedVec};
 use orx_pseudo_default::PseudoDefault;
 
 /// A core data structure with a focus to enable high performance, possibly lock-free, concurrent collections using a [`PinnedVec`](https://crates.io/crates/orx-pinned-vec) as the underlying storage.
