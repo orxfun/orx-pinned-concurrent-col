@@ -14,7 +14,11 @@ use test_case::test_matrix;
 ])]
 fn write_drop_col<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     let len1 = 5;
+
+    #[cfg(not(miri))]
     let len2 = 1574;
+    #[cfg(miri)]
+    let len2 = 157;
 
     vec.clear();
     for idx in 0..len1 {
@@ -41,7 +45,11 @@ fn write_drop_col<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
 ])]
 fn write_drop_vec<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
     let len1 = 5;
+
+    #[cfg(not(miri))]
     let len2 = 1574;
+    #[cfg(miri)]
+    let len2 = 157;
 
     vec.clear();
     for idx in 0..len1 {

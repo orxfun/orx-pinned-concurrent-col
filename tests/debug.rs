@@ -8,7 +8,7 @@ use state::MyConState;
 
 #[test]
 fn debug_split_doubling() {
-    let mut vec: SplitVec<usize> = SplitVec::with_doubling_growth_and_fragments_capacity(32);
+    let mut vec: SplitVec<usize> = SplitVec::with_doubling_growth_and_max_concurrent_capacity();
     for i in 0..187 {
         vec.push(i);
     }
@@ -20,6 +20,10 @@ fn debug_split_doubling() {
     }
 
     let debug = format!("{:?}", col);
+
+    #[cfg(target_pointer_width = "32")]
+    let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 252, len: 187, phantom: PhantomData<usize> }, capacity: 508, maximum_capacity: 2147483644 }";
+    #[cfg(target_pointer_width = "64")]
     let expected = "PinnedConcurrentCol { state: MyConState { initial_len: 187, initial_cap: 252, len: 187, phantom: PhantomData<usize> }, capacity: 508, maximum_capacity: 17179869180 }";
 
     assert_eq!(debug, expected);
