@@ -608,12 +608,12 @@ where
         self.state = S::new_for_con_pinned_vec(&self.con_pinned_vec, 0);
     }
 
-    #[inline(always)]
     /// Returns a mutable reference to the element at the index-th position.
     ///
     /// # Safety
     ///
     /// Reading the pointer before writing its value will result in UB.
+    #[inline(always)]
     pub unsafe fn ptr_mut(&self, idx: usize) -> *mut T {
         unsafe { self.con_pinned_vec.get_ptr_mut(idx) }
     }
