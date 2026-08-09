@@ -24,7 +24,7 @@ fn reserve<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
 
     let new_capacity = unsafe { col.reserve_maximum_capacity(1, max_cap + 1) };
 
-    assert!(new_capacity >= max_cap + 1);
+    assert!(new_capacity > max_cap);
     assert!(col.capacity() >= initial_capacity);
 }
 
@@ -46,6 +46,6 @@ fn reserve_fill_with<P: IntoConcurrentPinnedVec<String>>(mut vec: P) {
 
     let new_capacity = unsafe { col.reserve_maximum_capacity(1, max_cap + 1) };
 
-    assert!(new_capacity >= max_cap + 1);
+    assert!(new_capacity > max_cap);
     assert!(col.capacity() >= initial_capacity);
 }
