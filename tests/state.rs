@@ -1,10 +1,7 @@
 use orx_pinned_concurrent_col::*;
 use orx_pinned_vec::{ConcurrentPinnedVec, PinnedVec};
-use std::{
-    cmp::Ordering,
-    marker::PhantomData,
-    sync::atomic::{self, AtomicUsize},
-};
+use std::sync::atomic::{self, AtomicUsize};
+use std::{cmp::Ordering, marker::PhantomData};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -107,6 +104,7 @@ pub struct MyConStateFilled<T: Default> {
 }
 
 impl<T: Default> MyConStateFilled<T> {
+    #[allow(dead_code)]
     pub fn new(initial_len: usize, initial_cap: usize) -> Self {
         Self {
             initial_len,
@@ -117,6 +115,7 @@ impl<T: Default> MyConStateFilled<T> {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.len.load(atomic::Ordering::Relaxed)
     }
