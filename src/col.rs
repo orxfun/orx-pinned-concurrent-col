@@ -710,6 +710,7 @@ mod tests {
     }
 
     impl<T> MyConState<T> {
+        #[allow(dead_code)]
         pub fn new(initial_len: usize, initial_cap: usize) -> Self {
             Self {
                 initial_len,
@@ -720,6 +721,7 @@ mod tests {
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub(crate) fn len(&self) -> usize {
             self.len.load(atomic::Ordering::SeqCst)
         }
